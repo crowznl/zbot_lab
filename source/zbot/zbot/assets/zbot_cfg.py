@@ -59,6 +59,7 @@ JOINT_TEST_CFG = ArticulationCfg(
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=True,  # True
+            fix_root_link = True,
             solver_position_iteration_count=4, 
             solver_velocity_iteration_count=0
         ),
@@ -67,7 +68,7 @@ JOINT_TEST_CFG = ArticulationCfg(
     init_state=ArticulationCfg.InitialStateCfg(
         # pos=(0.0, 0.0, 0.05),
         # rot=(0.707, 0.0, -0.707, 0.0),
-        pos=(0.0, 0.0, 0.0),
+        pos=(0.0, 0.0, 0.5),
         rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
         joint_pos={
             "joint1": -3.141593,  # -180 degrees

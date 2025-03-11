@@ -37,6 +37,7 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import torch
+import time
 import isaacsim.core.utils.prims as prim_utils
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
@@ -88,7 +89,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
     count = 0
     joint = robot.data.default_joint_pos.clone()
     cc = 1
-    reset_max_steps = 100 # 10 # 500
+    reset_max_steps = 500 # 10 # 500
     # Simulation loop
     while simulation_app.is_running():
         # Reset
@@ -96,7 +97,8 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
             # reset counter
             count = 0
             joint = robot.data.default_joint_pos.clone()
-            cc *= -1
+            # cc *= -1
+
             # reset the scene entities
             # root state
             # we offset the root state by the origin since the states are written in simulation world frame
@@ -122,8 +124,10 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
         # # -- write data to sim
         # robot.write_data_to_sim()
 
-        print(robot.data.joint_pos/3.141593*180)
-        joint += 0.01 * cc
+        time.sleep(0.1)
+        print("c", robot.data.joint_pos/3.141593*180)
+        joint += 0.1 * cc
+        print("t", joint/3.141593*180)
         robot.set_joint_position_target(joint)
         robot.write_data_to_sim()
 
@@ -143,7 +147,8 @@ def main():
     # sim_cfg.gravity = (0.0, 0.0, 0.0)
     sim = SimulationContext(sim_cfg)
     # Set main camera
-    sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
+    # sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
+    sim.set_camera_view([0.5, 0.0, 2.0], [0.0, 0.0, 0.0])
     # Design scene
     scene_entities, scene_origins = design_scene()
     scene_origins = torch.tensor(scene_origins, device=sim.device)
