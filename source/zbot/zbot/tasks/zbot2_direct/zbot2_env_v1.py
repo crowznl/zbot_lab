@@ -44,7 +44,6 @@ class Zbot2EnvCfg(DirectRLEnvCfg):
         dt=1 / 200,
         render_interval=decimation,
         use_fabric=True,  # Default is True
-        disable_contact_processing=True,  # Default is False
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
             restitution_combine_mode="multiply",
@@ -191,6 +190,7 @@ class Zbot2Env(DirectRLEnv):
         # print(self.pos_d[0], self.joint_pos[0])
         # tensor([ 2.0745, -3.9270], device='cuda:0') tensor([ 2.0578, -3.9300], device='cuda:0')
         # 这说明什么？说明joint_pos并不是规整的，并没有在[-pi, pi]之间
+        # 那有没有可能在[-2pi, 2pi]之间呢？
         total_reward, symmetry_rew = compute_rewards(
             self.body_states,
             self.to_target,

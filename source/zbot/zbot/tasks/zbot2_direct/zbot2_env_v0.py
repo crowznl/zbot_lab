@@ -42,7 +42,6 @@ class Zbot2EnvCfg(DirectRLEnvCfg):
         dt=1 / 120,
         render_interval=decimation,
         use_fabric=True,  # Default is True
-        disable_contact_processing=True,  # Default is False
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
             restitution_combine_mode="multiply",

@@ -47,7 +47,7 @@ joint_test_usd = "test_joint_range.usd"
 JOINT_TEST_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=usd_dir_path + joint_test_usd,
-        activate_contact_sensors=False,  # True
+        activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
             retain_accelerations=False,
@@ -58,10 +58,7 @@ JOINT_TEST_CFG = ArticulationCfg(
             max_depenetration_velocity=1.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=True,  # True
-            fix_root_link = True,
-            solver_position_iteration_count=4, 
-            solver_velocity_iteration_count=0
+            enabled_self_collisions=False, solver_position_iteration_count=8, solver_velocity_iteration_count=4
         ),
         # collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.02, rest_offset=0.0),
     ),
@@ -71,10 +68,13 @@ JOINT_TEST_CFG = ArticulationCfg(
         pos=(0.0, 0.0, 0.5),
         rot=(1.0, 0.0, 0.0, 0.0),  # (w, x, y, z)
         joint_pos={
-            "joint1": -3.141593,  # -180 degrees
+            # "joint1": -3.141593,  # -180 degrees
+            "joint1": 0.0,  # -180 degrees
+            "joint2": 0.0,  # -180 degrees
         },
         joint_vel={
             "joint1": 0.0,
+            "joint2": 0.0,
         },
     ),
     soft_joint_pos_limit_factor=1.0,
@@ -85,6 +85,7 @@ JOINT_TEST_CFG = ArticulationCfg(
             velocity_limit=10,
             stiffness=20,
             damping=0.5,
+            armature=0.01,
             friction=0.0,
         ),
     },
@@ -278,7 +279,7 @@ ZBOT_D_2S_CFG = ArticulationCfg(
             "joint[1-2]": 0.0,
         },
     ),
-    soft_joint_pos_limit_factor=1.0,
+    soft_joint_pos_limit_factor=0.9,
     actuators={
         "zbot_two": ImplicitActuatorCfg(
             joint_names_expr=["joint.*"],

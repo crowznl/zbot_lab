@@ -10,7 +10,7 @@ from .zbot2_env_v1 import Zbot2Env, Zbot2EnvCfg
 
 gym.register(
     id="Zbot-2s-walk-v0",
-    entry_point="zbot.tasks.moving.zbot2_direct:Zbot2Env",
+    entry_point="zbot.tasks.zbot2_direct:Zbot2Env",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": Zbot2EnvCfg, 
