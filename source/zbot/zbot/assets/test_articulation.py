@@ -350,16 +350,19 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     prim_utils.create_prim("/World/Origin2", "Xform", translation=origins[1])
 
     # Articulation
-    zbot_cfg = ZBOT_D_6S_CFG.copy()
+    # zbot_cfg = ZBOT_D_6S_CFG.copy()
     # zbot_cfg = ZBOT_D_6B_1_CFG.copy()
     # zbot_cfg = ZBOT_D_2S_A_CFG.copy()
     # zbot_cfg = ZBOT_D_2S_CFG.copy()
-    # zbot_cfg = JOINT_TEST_CFG.copy()
+    zbot_cfg = JOINT_TEST_CFG.copy()
     # zbot_cfg = G1_CFG.copy()
     # zbot_cfg = JOINT_1_CFG.copy()
     # zbot_cfg = JOINT_2_CFG.copy()
     # zbot_cfg = H1_CFG.copy()
-
+    '''
+    纯纯因为没触发git hook, USD修改没同步过来, 导致始终显示[-3.4028e+38,  3.4028e+38], 
+    同步后就正常了！！！！啊
+    '''
 
     zbot_cfg.prim_path = "/World/Origin.*/Robot"
     zbot6s = Articulation(cfg=zbot_cfg)

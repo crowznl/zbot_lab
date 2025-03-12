@@ -70,11 +70,9 @@ JOINT_TEST_CFG = ArticulationCfg(
         joint_pos={
             # "joint1": -3.141593,  # -180 degrees
             "joint1": 0.0,  # -180 degrees
-            "joint2": 0.0,  # -180 degrees
         },
         joint_vel={
             "joint1": 0.0,
-            "joint2": 0.0,
         },
     ),
     soft_joint_pos_limit_factor=1.0,
