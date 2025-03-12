@@ -385,65 +385,65 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
 
     print(robot.data.default_joint_limits)
     print(robot.data.joint_limits)
-    # joints_limits = robot.data.default_joint_limits.clone()
-    # joints_limits[:, :, 0] = -3.141593*4
-    # joints_limits[:, :, 1] = 3.141593*4
-    # print(joints_limits)
-    # robot.write_joint_limits_to_sim(joints_limits)
-    # print(robot.data.default_joint_limits)
-    # print(robot.data.joint_limits)
+    joints_limits = robot.data.default_joint_limits.clone()
+    joints_limits[:, :, 0] = -3.141593*4
+    joints_limits[:, :, 1] = 3.141593*4
+    print(joints_limits)
+    robot.write_joint_limits_to_sim(joints_limits)
+    print(robot.data.default_joint_limits)
+    print(robot.data.joint_limits)
 
     cc = -1
     reset_max_steps = 500 # 10 # 500
     # Simulation loop
-    # while simulation_app.is_running():
-    #     # Reset
-    #     if count % reset_max_steps == 0:
-    #         # reset counter
-    #         count = 0
-    #         joint = robot.data.default_joint_pos.clone()
-    #         # cc *= -1
+    while simulation_app.is_running():
+        # Reset
+        if count % reset_max_steps == 0:
+            # reset counter
+            count = 0
+            joint = robot.data.default_joint_pos.clone()
+            # cc *= -1
 
-    #         # reset the scene entities
-    #         # root state
-    #         # we offset the root state by the origin since the states are written in simulation world frame
-    #         # if this is not done, then the robots will be spawned at the (0, 0, 0) of the simulation world
-    #         root_state = robot.data.default_root_state.clone()
-    #         root_state[:, :3] += origins
-    #         # print(root_state)
-    #         robot.write_root_state_to_sim(root_state)
-    #         # set joint positions with some noise
-    #         init_joint_pos, init_joint_vel = robot.data.default_joint_pos.clone(), robot.data.default_joint_vel.clone()
-    #         # print(joint_pos)
-    #         # print(joint_vel)
-    #         # joint_pos += torch.rand_like(joint_pos) * 0.1
-    #         robot.write_joint_state_to_sim(init_joint_pos, init_joint_vel)
-    #         # clear internal buffers
-    #         robot.reset()
-    #         print("[INFO]: Resetting robot state...")
-    #     # # Apply random action
-    #     # # -- generate random joint efforts
-    #     # efforts = torch.randn_like(robot.data.joint_pos) * 5.0
-    #     # # -- apply action to the robot
-    #     # robot.set_joint_effort_target(efforts)
-    #     # # -- write data to sim
-    #     # robot.write_data_to_sim()
+            # reset the scene entities
+            # root state
+            # we offset the root state by the origin since the states are written in simulation world frame
+            # if this is not done, then the robots will be spawned at the (0, 0, 0) of the simulation world
+            root_state = robot.data.default_root_state.clone()
+            root_state[:, :3] += origins
+            # print(root_state)
+            robot.write_root_state_to_sim(root_state)
+            # set joint positions with some noise
+            init_joint_pos, init_joint_vel = robot.data.default_joint_pos.clone(), robot.data.default_joint_vel.clone()
+            # print(joint_pos)
+            # print(joint_vel)
+            # joint_pos += torch.rand_like(joint_pos) * 0.1
+            robot.write_joint_state_to_sim(init_joint_pos, init_joint_vel)
+            # clear internal buffers
+            robot.reset()
+            print("[INFO]: Resetting robot state...")
+        # # Apply random action
+        # # -- generate random joint efforts
+        # efforts = torch.randn_like(robot.data.joint_pos) * 5.0
+        # # -- apply action to the robot
+        # robot.set_joint_effort_target(efforts)
+        # # -- write data to sim
+        # robot.write_data_to_sim()
 
-    #     time.sleep(0.1)
-    #     # print("c", robot.data.joint_pos/3.141593*180)
+        time.sleep(0.1)
+        # print("c", robot.data.joint_pos/3.141593*180)
         
-    #     joint += 0.1 * cc
-    #     print("t", joint/3.141593*180)
-    #     robot.set_joint_position_target(joint)
-    #     robot.write_data_to_sim()
-    #     print("c", robot.data.joint_pos/3.141593*180)
+        joint += 0.1 * cc
+        print("t", joint/3.141593*180)
+        robot.set_joint_position_target(joint)
+        robot.write_data_to_sim()
+        print("c", robot.data.joint_pos/3.141593*180)
 
-    #     # Perform step
-    #     sim.step()
-    #     # Increment counter
-    #     count += 1
-    #     # Update buffers
-    #     robot.update(sim_dt)
+        # Perform step
+        sim.step()
+        # Increment counter
+        count += 1
+        # Update buffers
+        robot.update(sim_dt)
 
 
 def main():
@@ -465,7 +465,7 @@ def main():
     print("[INFO]: Setup complete...")
     # Run the simulator
     run_simulator(sim, scene_entities, scene_origins)
-    time.sleep(100)
+    # time.sleep(100)
 
 
 if __name__ == "__main__":
