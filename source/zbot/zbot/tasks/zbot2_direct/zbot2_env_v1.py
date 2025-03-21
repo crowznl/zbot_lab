@@ -190,7 +190,8 @@ class Zbot2Env(DirectRLEnv):
         # print(self.pos_d[0], self.joint_pos[0])
         # tensor([ 2.0745, -3.9270], device='cuda:0') tensor([ 2.0578, -3.9300], device='cuda:0')
         # 这说明什么？说明joint_pos并不是规整的，并没有在[-pi, pi]之间
-        # 那有没有可能在[-2pi, 2pi]之间呢？
+        # 那有没有可能在[-2pi, 2pi]之间呢？在test_articulation.py中进行了测试，
+        # 默认确实是在[-2pi, 2pi]之间规整，哪怕默认没有关节限制inf。只有当我们设置关节限制的时候，data.joint_pos才会在关节限制之间规整。
         total_reward, symmetry_rew = compute_rewards(
             self.body_states,
             self.to_target,

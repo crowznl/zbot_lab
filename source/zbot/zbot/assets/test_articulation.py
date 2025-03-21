@@ -15,6 +15,9 @@
 # referrence: https://github.com/isaac-sim/IsaacLab/issues/1046 
 # [Question] How should I create an Articulation will unactuated joints? #1046 
 
+# 2025-03-20
+# 默认确实是在[-2pi, 2pi]之间规整，哪怕默认没有关节限制inf。
+# 只有当我们设置关节限制的时候，data.joint_pos才会在关节限制之间规整。
 
 """Launch Isaac Sim Simulator first."""
 

@@ -10,7 +10,8 @@ from . import agents
 # from .zbot_env_v06 import ZbotSEnv, ZbotSEnvCfg
 # from .zbot_env_v07 import ZbotSEnv, ZbotSEnvCfg
 # from .zbot_env_v08 import ZbotSEnv, ZbotSEnvCfg
-from .zbot_env_v09 import ZbotSEnv, ZbotSEnvCfg
+# from .zbot_env_v09 import ZbotSEnv, ZbotSEnvCfg
+from .zbot_env_v10 import ZbotSEnv, ZbotSEnvCfg # for 6 modules wiht 1 node module
 
 ##
 # Register Gym environments.
