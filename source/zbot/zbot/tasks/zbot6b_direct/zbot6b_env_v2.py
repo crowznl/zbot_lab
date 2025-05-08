@@ -55,7 +55,7 @@ class ZbotBEnvCfg(DirectRLEnvCfg):
 
     action_space = Box(low=-1.0, high=1.0, shape=(3*num_dof,)) 
     action_clip = 1.0
-    observation_space = 25  # 27
+    observation_space = 35  # 25  # 27
     state_space = 0
 
     # simulation  # use_fabric=True the GUI will not update
@@ -217,12 +217,13 @@ class ZbotBEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         obs = torch.cat(
             (
-                self.body_quat[:,0].reshape(self.scene.cfg.num_envs, -1),
+                # self.body_quat[:,0].reshape(self.scene.cfg.num_envs, -1),
                 self.body_quat[:,3].reshape(self.scene.cfg.num_envs, -1),
-                self.body_quat[:,6].reshape(self.scene.cfg.num_envs, -1),
+                # self.body_quat[:,6].reshape(self.scene.cfg.num_envs, -1),
                 self._commands,
                 self.joint_vel,
                 self.joint_pos,
+                self.actions,
                 # 4*(3)+3+6+6
             ),
             dim=-1,
@@ -295,6 +296,7 @@ class ZbotBEnv(DirectRLEnv):
         self.foot_d_last[env_ids] = 0.106
         self.last_joint_vel[env_ids] = self.zbots.data.default_joint_vel[env_ids][:, self._joint_idx]
         self.pos_d[env_ids] = self.pos_init[env_ids]
+        self.actions[env_ids] = torch.zeros_like(self.actions[env_ids])
         self._compute_intermediate_values()
 
 
@@ -355,8 +357,8 @@ def compute_rewards(
     # total_reward = lin_vel_error_mapped * 1.0 * step_dt + 0.5 * df * step_dt
     # total_reward = lin_vel_error_mapped * 5.0 * step_dt + (y_proj-1.0) * 0.1
     # total_reward = lin_vel_error_mapped * 2.0 * step_dt
-    total_reward = lin_vel_error_mapped * 2.0 * step_dt + (y_proj-1.0) * 0.5
-    # total_reward = lin_vel_error_mapped * 2.0 * step_dt + rew_dof_vel * -5e-4 + rew_dof_acc * -1e-7 + (y_proj-1.0)
+    # total_reward = lin_vel_error_mapped * 2.0 * step_dt + (y_proj-1.0) * 0.5
+    total_reward = lin_vel_error_mapped * 2.0 * step_dt + (y_proj-1.0) * 0.5 + rew_dof_vel * -5e-5 + rew_dof_acc * -1e-7
     total_reward = torch.where(reset_terminated, -1.0*torch.ones_like(total_reward), total_reward)
 
     # total_reward = torch.clamp(total_reward, min=0, max=torch.inf)
