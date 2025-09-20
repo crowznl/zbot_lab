@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import torch
 
-from zbot.assets import ZBOT_D_6S_CFG
+from zbot.assets import ZBOT_D_6S_CFG, ZBOT_D_6R_CFG
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, ArticulationCfg
@@ -26,7 +26,7 @@ from gymnasium.spaces import Box
 @configclass
 class ZbotSEnvCfg(DirectRLEnvCfg):
     # robot
-    robot_cfg: ArticulationCfg = ZBOT_D_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = ZBOT_D_6R_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False, 
         filter_prim_paths_expr=["/World/envs/env_.*/Robot/b4", 
@@ -104,6 +104,9 @@ class ZbotSEnv(DirectRLEnv):
 
     def __init__(self, cfg: ZbotSEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
+
+        print(self.zbots.find_bodies(".*"))
+        print(self.zbots.find_joints(".*"))
 
         self.targets = torch.tensor([0, 10, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
         self.targets += self.scene.env_origins
@@ -264,6 +267,7 @@ class ZbotSEnv(DirectRLEnv):
         self.pos_d[env_ids] = 0
         self.center_z_last[env_ids] = 0.05
         self._compute_intermediate_values()
+        # print(self.zbots.data.body_pos_w[0:2, :])
 
 
 @torch.jit.script
