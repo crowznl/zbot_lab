@@ -40,10 +40,12 @@ robot_8_usd = "zbot_8s_v0.usd"
 robot_6w_usd = "zbot_6w_v1.usd"  # change pivot_b's frame
 robot_2_usd = "zbot_2s_v0.usd"
 robot_2a_usd = "zbot_2s_v1.usd"  # change joints' frame
-robot_6b_usd = "zbot_6b_v0.usd" # bipedal
-joint_test_usd = "test_joint_range.usd"
-robot_6R_usd = "zbot_6_base_v00.usd"
+robot_3_usd = "zbot_3s_v0.usd"
+robot_6b_usd = "zbot_6b_v0.usd" # add feet for quaternion aquirement
+robot_6R_usd = "zbot_6_base_v00.usd"  # change articulation root to a4 body
 
+
+joint_test_usd = "test_joint_range.usd"
 ##
 # Configuration
 ##
@@ -404,6 +406,50 @@ ZBOT_D_2S_A_CFG = ArticulationCfg(
     },
 )
 
+ZBOT_D_6S_CFG = ArticulationCfg(
+    # prim_path="{ENV_REGEX_NS}/Robot",
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=usd_dir_path + robot_3_usd,
+        activate_contact_sensors=True,  # True
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,  # True
+            solver_position_iteration_count=4, 
+            solver_velocity_iteration_count=0
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.05),
+        rot=(0.707, 0.0, -0.707, 0.0),  # (w, x, y, z); y-axis -90; if y-axis 90, rot = (0.707, 0.0, 0.707, 0.0),
+        # rot = (0.707, 0.0, 0.707, 0.0),
+        joint_pos={
+            "joint[1-3]": 0.0,
+        },
+        joint_vel={
+            "joint[1-3]": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=1.0,
+    actuators={
+        "zbot_three": ImplicitActuatorCfg(
+            joint_names_expr=["joint.*"],
+            effort_limit=20,
+            velocity_limit=10,
+            stiffness=20,  # kp
+            damping=0.5,  # kd
+            friction=0.0,
+        ),
+    },
+)
+
 ZBOT_D_6B_CFG = ArticulationCfg(
     # prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
@@ -453,6 +499,7 @@ ZBOT_D_6B_CFG = ArticulationCfg(
     },
 )
 
+# different initial pose
 ZBOT_D_6B_1_CFG = ArticulationCfg(
     # prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
