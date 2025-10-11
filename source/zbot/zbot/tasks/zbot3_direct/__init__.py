@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """
-Ant locomotion environment.
+zbot 3s environment.
 """
 
 import gymnasium as gym
