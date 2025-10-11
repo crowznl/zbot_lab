@@ -406,7 +406,7 @@ ZBOT_D_2S_A_CFG = ArticulationCfg(
     },
 )
 
-ZBOT_D_6S_CFG = ArticulationCfg(
+ZBOT_D_3S_CFG = ArticulationCfg(
     # prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
         usd_path=usd_dir_path + robot_3_usd,
