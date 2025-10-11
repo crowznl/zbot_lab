@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from isaaclab.utils import configclass
 
 from .rough_env_cfg import AnymalDRoughEnvCfg
@@ -33,6 +38,6 @@ class AnymalDFlatEnvCfg_PLAY(AnymalDFlatEnvCfg):
         self.scene.env_spacing = 2.5
         # disable randomization for play
         self.observations.policy.enable_corruption = False
-        # remove random pushing
+        # remove random pushing event
         self.events.base_external_force_torque = None
         self.events.push_robot = None

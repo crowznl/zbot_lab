@@ -1,3 +1,8 @@
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from isaaclab.utils import configclass
 
 from zbot.tasks.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
@@ -36,6 +41,6 @@ class AnymalDRoughEnvCfg_PLAY(AnymalDRoughEnvCfg):
 
         # disable randomization for play
         self.observations.policy.enable_corruption = False
-        # remove random pushing
+        # remove random pushing event
         self.events.base_external_force_torque = None
         self.events.push_robot = None
