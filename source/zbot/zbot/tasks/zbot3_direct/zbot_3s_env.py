@@ -27,21 +27,28 @@ class Zbot3SEnv(DirectRLEnv):
         self._previous_actions = torch.zeros(
             self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
         )
+        self._processed_actions = torch.zeros(
+            self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
+        )
 
         # X/Y linear velocity and yaw angular velocity commands
         self._commands = torch.zeros(self.num_envs, 3, device=self.device)
+        self.joint_speed_limit = (0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)) * torch.pi  # 0.2 ~ 2.0 * pi
 
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
             for key in [
-                "track_lin_vel_xy_exp",
-                "track_ang_vel_z_exp",
-                "lin_vel_z_l2",
-                "ang_vel_xy_l2",
-                "dof_torques_l2",
-                "dof_acc_l2",
-                "action_rate_l2",
+                # "track_lin_vel_xy_exp",
+                # "track_ang_vel_z_exp",
+                # "lin_vel_z_l2",
+                # "ang_vel_xy_l2",
+                # "dof_torques_l2",
+                # "dof_acc_l2",
+                # "action_rate_l2",
+
+                "lin_vel_xy_rate",
+                "died_penalty",
             ]
         }
 
@@ -63,7 +70,9 @@ class Zbot3SEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone()
-        self._processed_actions = self._actions.clamp(-self.cfg.action_clip, self.cfg.action_clip) + self._robot.data.default_joint_pos
+        self._processed_actions += self._actions.clamp(-self.cfg.action_clip, self.cfg.action_clip) * self.joint_speed_limit * self.cfg.sim.dt
+        self._processed_actions = self._processed_actions.clamp(-torch.pi, torch.pi)
+        # self._processed_actions += self._robot.data.default_joint_pos
 
     def _apply_action(self):
         self._robot.set_joint_position_target(self._processed_actions)
@@ -74,7 +83,8 @@ class Zbot3SEnv(DirectRLEnv):
             [
                 tensor
                 for tensor in (
-                    self._commands,
+                    # self._commands,
+                    self.joint_speed_limit,
                     self._robot.data.root_link_quat_w,
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                     self._robot.data.joint_vel,
@@ -88,32 +98,51 @@ class Zbot3SEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        # linear velocity tracking
-        lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
-        lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
-        # yaw rate tracking
-        yaw_rate_error = torch.square(self._commands[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
-        yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
-        # z velocity tracking
-        z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
-        # angular velocity x/y
-        ang_vel_error = torch.sum(torch.square(self._robot.data.root_ang_vel_b[:, :2]), dim=1)
+        # # linear velocity tracking
+        # lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
+        # lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
+        # # yaw rate tracking
+        # yaw_rate_error = torch.square(self._commands[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
+        # yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
+        # # z velocity tracking
+        # z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
+        # # angular velocity x/y
+        # ang_vel_error = torch.sum(torch.square(self._robot.data.root_ang_vel_b[:, :2]), dim=1)
         # joint torques
-        joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
-        # joint acceleration
-        joint_accel = torch.sum(torch.square(self._robot.data.joint_acc), dim=1)
-        # action rate
-        action_rate = torch.sum(torch.square(self._actions - self._previous_actions), dim=1)
+        # joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
+        # # joint acceleration
+        # joint_accel = torch.sum(torch.square(self._robot.data.joint_acc), dim=1)
+        # # action rate
+        # action_rate = torch.sum(torch.square(self._actions - self._previous_actions), dim=1)
+
+        # x-y linear velocity rate
+        # lin_vel_xy_rate = torch.square(self._robot.data.body_link_vel_w[:, 3, 0]) * self.step_dt
+        # lin_vel_xy_rate = torch.square(self._robot.data.body_link_vel_w[:, 3, 1]) * self.step_dt - torch.square(self._robot.data.body_link_vel_w[:, 3, 0]) * self.step_dt
+        # lin_vel_xy_rate = torch.square(self._robot.data.body_link_vel_w[:, 3, 1]) * self.step_dt
+        # lin_vel_xy_rate -= 0.1 * torch.square(self._robot.data.body_link_vel_w[:, 3, 0]) * self.step_dt
+        # lin_vel_xy_rate -= 0.01 * torch.square(self._robot.data.body_link_vel_w[:, 3, 5]) * self.step_dt
+
+        lin_vel_xy_rate = self._robot.data.body_link_vel_w[:, 3, 1] * self.step_dt 
+        lin_vel_xy_rate -= torch.square(self._robot.data.body_link_vel_w[:, 3, 0]) * self.step_dt
+        lin_vel_xy_rate -= 0.1 * torch.square(self._robot.data.body_link_vel_w[:, 3, 5]) * self.step_dt
+
+        # lin_vel_xy_rate -= torch.square(self._robot.data.body_link_pos_w[:, 3, 0] - self._terrain.env_origins[:, 0] + 0.159)
+        # lin_vel_xy_rate += torch.square(self._robot.data.body_link_pos_w[:, 3, 1] - self._terrain.env_origins[:, 1])
+        # died_penalty
+        died_penalty = torch.where(self.reset_terminated, -1.0, 0.0)
         
 
         rewards = {
-            "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
-            "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
-            "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
-            "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
-            "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
-            "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
+            # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
+            # "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
+            # "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
+            # "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
+            # "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
+            # "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
+            # "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
+
+            "lin_vel_xy_rate": lin_vel_xy_rate,
+            "died_penalty": died_penalty,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
@@ -125,7 +154,8 @@ class Zbot3SEnv(DirectRLEnv):
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         # net_contact_forces = self._contact_sensor.data.net_forces_w_history
         # died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self._base_id], dim=-1), dim=1)[0] > 1.0, dim=1)
-        died = self._robot.data.projected_gravity_b[:, 0] > 0.0
+        # died = self._robot.data.projected_gravity_b[:, 0] > 0.0
+        died = self._robot.data.body_link_pos_w[:, 3, 2] > 0.1
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -138,9 +168,10 @@ class Zbot3SEnv(DirectRLEnv):
             self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
         self._actions[env_ids] = 0.0
         self._previous_actions[env_ids] = 0.0
+        self._processed_actions[env_ids] = 0.0
         # Sample new commands
         # self._commands[env_ids] = torch.zeros_like(self._commands[env_ids]).uniform_(-1.0, 1.0)
-        self._commands[env_ids, 0].uniform_(-0.05, 0.05)
+        self._commands[env_ids, 0].uniform_(-0.1, 0.1)
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
