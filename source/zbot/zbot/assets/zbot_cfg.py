@@ -32,6 +32,7 @@ usd_dir_path = ISAACLAB_ASSETS_DATA_DIR
                     # self._parent_prims = sim_utils.find_matching_prims(env_prim_path_expr)
                     # self._num_envs = len(self._parent_prims)
 robot_usd = "zbot_6s_v03.usd"
+robot_6s_usd = "zbot_6s_new.usd"  # body renamed to a*, b*, foot*, base
 
 robot_6_node_usd = "zbot_6s_v05.usd"
 
@@ -607,4 +608,54 @@ ZBOT_D_6R_CFG = ArticulationCfg(
         ),
     },
     soft_joint_pos_limit_factor=1.0,
+)
+
+ZBOT_6S_CFG = ArticulationCfg(
+    # prim_path="{ENV_REGEX_NS}/Robot",
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=usd_dir_path + robot_6s_usd,
+        activate_contact_sensors=True,  # True
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,  # True
+            solver_position_iteration_count=4,
+            solver_velocity_iteration_count=0,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, -0.06, 0.0),
+        rot=(1.0, 0.0, 0.0, 0.0),
+        # rot = (0.707, 0.0, 0.707, 0.0),  # (w, x, y, z); y-axis -90; if y-axis 90, rot = (0.707, 0.0, 0.707, 0.0)
+        joint_pos={
+            "joint1": 0.312,
+            "joint2": 0.837,
+            "joint3": -2.02,
+            "joint4": 2.02,
+            "joint5": -0.837,
+            "joint6": -0.312,
+        },
+        joint_vel={
+            "joint[1-6]": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=1.0,
+    actuators={
+        "zbot_six": ImplicitActuatorCfg(
+            # joint_names_expr=[".*joint"],
+            joint_names_expr=["joint.*"],
+            effort_limit=2000,
+            velocity_limit=1000,
+            stiffness=50.0,  # kp
+            damping=5.0,  # kd
+            friction=0.0,
+        ),
+    },
 )

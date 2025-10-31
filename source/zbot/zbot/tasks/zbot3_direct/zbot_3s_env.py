@@ -122,8 +122,8 @@ class Zbot3SEnv(DirectRLEnv):
         # lin_vel_xy_rate -= 0.1 * torch.square(self._robot.data.body_link_vel_w[:, 3, 0]) * self.step_dt
         # lin_vel_xy_rate -= 0.01 * torch.square(self._robot.data.body_link_vel_w[:, 3, 5]) * self.step_dt
 
-        lin_vel_xy_rate = self._robot.data.body_link_vel_w[:, 3, 1] * self.step_dt 
-        lin_vel_xy_rate -= torch.square(self._robot.data.body_link_vel_w[:, 3, 0]) * self.step_dt
+        lin_vel_xy_rate = self._robot.data.body_link_vel_w[:, 3, 1] * self.step_dt
+        lin_vel_xy_rate -= 2 * torch.square(self._robot.data.body_link_vel_w[:, 3, 0]) * self.step_dt
         lin_vel_xy_rate -= 0.1 * torch.square(self._robot.data.body_link_vel_w[:, 3, 5]) * self.step_dt
 
         # lin_vel_xy_rate -= torch.square(self._robot.data.body_link_pos_w[:, 3, 0] - self._terrain.env_origins[:, 0] + 0.159)
