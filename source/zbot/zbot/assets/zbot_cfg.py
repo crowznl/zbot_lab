@@ -651,8 +651,8 @@ ZBOT_6S_CFG = ArticulationCfg(
         "zbot_six": ImplicitActuatorCfg(
             # joint_names_expr=[".*joint"],
             joint_names_expr=["joint.*"],
-            effort_limit=2000,
-            velocity_limit=1000,
+            effort_limit=20,
+            velocity_limit=20,
             stiffness=50.0,  # kp
             damping=5.0,  # kd
             friction=0.0,

@@ -18,27 +18,40 @@ from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg 
 from isaaclab.utils import configclass
 
-from zbot.assets import ZBOT_6S_CFG
+from zbot.assets import ZBOT_D_6S_CFG
 
 @configclass
-class ZbotDirectEnvCfgV2(DirectRLEnvCfg):
+class ZbotDirectEnvCfgV0(DirectRLEnvCfg):
     # robot
-    robot: ArticulationCfg = ZBOT_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*",
-        history_length=5,
-        update_period=0.0,
-        track_air_time=True,
-        track_pose=True,
+    robot: ArticulationCfg = ZBOT_D_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    contact_sensor_1: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/a1", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b4", 
+                                "/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", 
+                                "/World/envs/env_.*/Robot/a6", "/World/envs/env_.*/Robot/b6"]
     )
+    contact_sensor_2: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/b6", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a3", 
+                                "/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2", 
+                                "/World/envs/env_.*/Robot/b1"]
+    )
+    contact_sensor_3: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/b1", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/a5", "/World/envs/env_.*/Robot/b5", 
+                                "/World/envs/env_.*/Robot/a6"]
+    )
+    contact_sensor_4: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/a6", history_length=3, update_period=0.0, track_air_time=False, 
+        filter_prim_paths_expr=["/World/envs/env_.*/Robot/b2", "/World/envs/env_.*/Robot/a2"]
+    )  # TODO: a2, b5
 
     # env
-    episode_length_s = 20.0
+    episode_length_s = 16.0
     decimation = 4  # 2
-    action_space = 6  #24 for sin ;  6 for pd
+    action_space = 6  # 24 for sin ;  6 for pd
     observation_space = 23
     state_space = 0
-    termination_height = 0.22
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -71,142 +84,31 @@ class ZbotDirectEnvCfgV2(DirectRLEnvCfg):
         num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
     
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward for just stepping walk base 2000 step0
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "base_vel_forward": 1.0,
-    #         "feet_downward": -1.0,
-    #         "feet_forward": -1.0,  # -0.5,
-    #         "base_heading_x": -1.0,
-    #         # "base_heading_x_sum": -1.0,
-    #         "feet_force_diff": 0.5,
-    #         "feet_force_sum": -0.1,
-    #         "base_pos_y_err": -1.0,
-    #         # "feet_slide": -10.0,
-    #         # "airtime_sum": 10.0,
-    #     },
-    # }
-
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward 2000 step1 v0 use this
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "base_vel_forward": 1.0,
-    #         "feet_downward": -1.0,
-    #         "feet_forward": -1.0,
-    #         "base_heading_x": -1.0,
-    #         "base_heading_x_sum": -3.0,
-    #         "step_length": 5.0,
-    #         "airtime_balance": -15.0,
-    #         "action_rate": -0.1,
-    #         "torques": -0.002,
-    #         "feet_slide": -10.0,
-    #         "base_pos_y_err": -1.0,
-    #     },
-    # }
-
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward 2000 step1 v1
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "base_vel_forward": 1.0,
-    #         "feet_downward": -1.5,
-    #         "feet_forward": -0.5,
-    #         "base_heading_x": -1.0,
-    #         "base_heading_x_sum": -3.0,
-    #         "step_length": 5.0,
-    #         "airtime_balance": -15.0,
-    #         "action_rate": -0.1,
-    #         "torques": -0.002,
-    #         "feet_slide": -10.0,
-    #         "base_pos_y_err": -1.5,
-    #         "base_pos_y_err_sum": -1.5,
-    #     },
-    # }
-
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward 2000 step1 v2
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "base_vel_forward": 1.0,
-    #         "feet_downward": -2.0,
-    #         "feet_forward": -0.2,
-    #         "base_heading_x": -1.0,
-    #         "base_heading_x_sum": -5.0,
-    #         "step_length": 5.0,
-    #         "airtime_balance": -15.0,
-    #         "action_rate": -0.1,
-    #         "torques": -0.002,
-    #         "feet_slide": -10.0,
-    #         "base_pos_y_err": -2.0,
-    #         "base_pos_y_err_sum": -2.0,
-    #     },
-    # }
-
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward 2000 step2
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "base_vel_forward": 1.0,
-    #         "feet_downward": -2.0,
-    #         "feet_forward": -1.0,
-    #         "base_heading_x": -1.0,
-    #         "base_heading_x_sum": -3.0,
-    #         "step_length": 5.0,
-    #         "airtime_balance": -15.0,
-    #         "action_rate": -0.1,
-    #         "torques": -0.002,
-    #         "feet_slide": -10.0,
-    #         "base_pos_y_err": -1.0,
-    #         "base_pos_y_err_sum": -2.0,
-    #     },
-    # }
-
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward 2000 step3
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "base_vel_forward": 1.0,
-    #         "feet_downward": -2.0,
-    #         "feet_forward": -1.0,
-    #         "base_heading_x": -1.0,
-    #         "base_heading_x_sum": -5.0,
-    #         "step_length": 5.0,
-    #         "airtime_balance": -15.0,
-    #         "action_rate": -0.1,
-    #         "torques": -0.002,
-    #         "feet_slide": -10.0,
-    #         "base_pos_y_err": -2.0,
-    #         "base_pos_y_err_sum": -2.0,
-    #     },
-    # }
-
     # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   train reward 2000 step4
+    #   train reward for just stepping walk base 2000 step0
     reward_cfg = {
         "reward_scales": {
             "base_vel_forward": 1.0,
-            "feet_downward": -2.0,
-            "feet_forward": -1.0,
+            "feet_downward": -1.0,
+            "feet_forward": -1.0,  # -0.5,
             "base_heading_x": -1.0,
-            "base_heading_x_sum": -5.0,
-            "step_length": 5.0,
-            "airtime_balance": -15.0,
-            "action_rate": -0.1,
-            "torques": -0.002,
-            "feet_slide": -10.0,
-            "base_pos_y_err": -2.0,
-            "base_pos_y_err_sum": -2.0,
-            "airtime_sum": 3.0,
+            # "base_heading_x_sum": -1.0,
+            "feet_force_diff": 0.5,
+            "feet_force_sum": -0.1,
+            "base_pos_y_err": -1.0,
+            # "feet_slide": -10.0,
+            # "airtime_sum": 10.0,
         },
     }
 
-class ZbotDirectEnvV2(DirectRLEnv):
-    cfg: ZbotDirectEnvCfgV2
+class ZbotDirectEnvV0(DirectRLEnv):
+    cfg: ZbotDirectEnvCfgV0
 
-    def __init__(self, cfg: ZbotDirectEnvCfgV2, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: ZbotDirectEnvCfgV0, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
+
+        print(self._robot.find_bodies(".*"))
+        print(self._robot.find_joints(".*"))
 
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(
