@@ -88,16 +88,14 @@ class ZbotDirectEnvCfgV0(DirectRLEnvCfg):
     #   train reward for just stepping walk base 2000 step0
     reward_cfg = {
         "reward_scales": {
-            "base_vel_forward": 1.0,
-            "feet_downward": -1.0,
-            "feet_forward": -1.0,  # -0.5,
-            "base_heading_x": -1.0,
-            # "base_heading_x_sum": -1.0,
-            "feet_force_diff": 0.5,
-            "feet_force_sum": -0.1,
-            "base_pos_y_err": -1.0,
-            # "feet_slide": -10.0,
-            # "airtime_sum": 10.0,
+            "base_vel_forward": 5.0,
+            "base_up_z": -0.5,
+            "base_heading_y": -1.0,
+            "base_heading_y_sum": -1.0,
+            "base_pos_x_err": -1.0,
+            # "base_pos_x_err_sum": -1.0,
+            "action_rate": -0.1,
+            "torques": -0.002,
         },
     }
 
@@ -122,23 +120,13 @@ class ZbotDirectEnvV0(DirectRLEnv):
             device=self.device,
         )
 
-        # Get specific body indices
-        self._feet_ids, _ = self._contact_sensor.find_bodies("foot.*")
-        self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies("base|a.*|b.*")
-        self.base_body_idx = self._robot.find_bodies("base")[0]
-        self.feet_body_idx = self._robot.find_bodies("foot.*")[0]
-        self.feet_contact_forces_last = torch.zeros(
-            (self.num_envs, 2), device=self.device, dtype=torch.float
-        )
+        self.heading_vec = torch.tensor([0, -1, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        self.up_vec = torch.tensor([-1, 0, 0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs, 1))
+        # base body axis -Y point to world Y, axis -X point to world Z
+        self.base_heading_y_sum = torch.zeros(self.num_envs, device=self.device)
+        self.base_pos_x_err_sum = torch.zeros(self.num_envs, device=self.device)
 
-        self.feet_down_pos_last = torch.zeros((self.num_envs, 2, 3), device=self.device)
-        self.feet_step_length = torch.zeros((self.num_envs, 2), device=self.device)
-        self.feet_air_times = torch.zeros((self.num_envs, 2), device=self.device)
-        self.feet_force_sum = torch.zeros(self.num_envs, device=self.device)
-        self.base_heading_x_sum = torch.zeros(self.num_envs, device=self.device)
-        self.base_pos_y_err_sum = torch.zeros(self.num_envs, device=self.device)
-
-        self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
+        self.joint_speed_limit = (torch.rand(self.num_envs, 1, device=self.device) * 1.8 + 0.2) * torch.pi
 
         self.p_delta = torch.zeros_like(self._robot.data.default_joint_pos)
         self.reward_scales = cfg.reward_cfg["reward_scales"]
@@ -158,13 +146,19 @@ class ZbotDirectEnvV0(DirectRLEnv):
         self._robot = Articulation(self.cfg.robot)
         self.scene.articulations["robot"] = self._robot
 
-        self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
-        self.scene.sensors["contact_sensor"] = self._contact_sensor
-
+        self._contact_sensor_1 = ContactSensor(self.cfg.contact_sensor_1)
+        self.scene.sensors["contact_sensor_1"] = self._contact_sensor_1
+        self._contact_sensor_2 = ContactSensor(self.cfg.contact_sensor_2)
+        self.scene.sensors["contact_sensor_2"] = self._contact_sensor_2
+        self._contact_sensor_3 = ContactSensor(self.cfg.contact_sensor_3)
+        self.scene.sensors["contact_sensor_3"] = self._contact_sensor_3
+        self._contact_sensor_4 = ContactSensor(self.cfg.contact_sensor_4)
+        self.scene.sensors["contact_sensor_4"] = self._contact_sensor_4
+        # add ground plane
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
-        # clone and replicate
+        # clone, filter, and replicate
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=[self.cfg.terrain.prim_path])
         # add lights
@@ -175,8 +169,7 @@ class ZbotDirectEnvV0(DirectRLEnv):
         # #mode 1
         self._actions = torch.tanh(actions.clone())
         self.p_delta[:] += (
-            torch.pi
-            * self._actions
+            self._actions
             * self.joint_speed_limit
             * self.step_dt
         )
@@ -207,47 +200,22 @@ class ZbotDirectEnvV0(DirectRLEnv):
     def _get_observations(self) -> dict:
         self._previous_actions = self._actions.clone()
 
-        self.base_pos_w = self._robot.data.body_link_pos_w[:, self.base_body_idx].squeeze()
-        self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze()
-        self.feet_quat_w = self._robot.data.body_link_quat_w[:, self.feet_body_idx]
-        self.feet_pos_w = self._robot.data.body_link_pos_w[:, self.feet_body_idx]
+        self.base_pos_w = self._robot.data.body_link_pos_w[:, 6]
+        self.base_quat_w = self._robot.data.body_link_quat_w[:, 6]
 
-        axis_z = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
-        # base body axis z point to world Y
-        self.base_shoulder_w = math_utils.quat_apply(self.base_quat_w, axis_z)  # torch.Size([4096, 3])
-        self.base_dir_forward_w = torch.cross(self._robot.data.GRAVITY_VEC_W, self.base_shoulder_w)  # torch.Size([4096, 3])
-        self.base_heading_x_err = -self.base_dir_forward_w[..., 1]  # torch.Size([4096])
-        
-        self.base_lin_vel_w = self._robot.data.body_com_lin_vel_w[:, self.base_body_idx, :].squeeze()  # torch.Size([4096, 3])
-        self.base_lin_vel_forward_w = torch.sum(self.base_lin_vel_w * self.base_dir_forward_w, dim=-1)  # 法一 torch.Size([4096])
-        # self.base_lin_vel_forward_w = torch.einsum('ij,ij->i', self.base_lin_vel_w, self.base_dir_forward_w)  # 法二
-        # self.base_lin_vel_forward_w = (self.base_lin_vel_w @ self.base_dir_forward_w.unsqueeze(-1)).squeeze(-1)  # 法三
+        self.base_heading_w = math_utils.quat_apply(self.base_quat_w, self.heading_vec)  # torch.Size([4096, 3])
+        self.base_up_w = math_utils.quat_apply(self.base_quat_w, self.up_vec)  # torch.Size([4096, 3])
+        self.base_heading_y_err = -self.base_heading_w[..., 0]  # torch.Size([4096])
 
-        self.z_w = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 2, 1))  # torch.Size([4096, 2, 3])
-        # axis_x_feet = torch.tensor(
-        #     [[1, 0, 0], [-0.7071, 0.0, -0.7071]], device=self.sim.device, dtype=torch.float32
-        # ).repeat((self.num_envs, 1, 1))
-        # axis_z_feet = torch.tensor(
-        #     [[0, 0, 1], [0.7071, 0.0, -0.7071]], device=self.sim.device, dtype=torch.float32
-        # ).repeat((self.num_envs, 1, 1))
-        axis_x_feet = torch.tensor(
-            [1, 0, 0], device=self.sim.device, dtype=torch.float32
-        ).repeat((self.num_envs, 2, 1))
-        axis_z_feet = torch.tensor(
-            [[0, 0, 1], [0, 0, -1]], device=self.sim.device, dtype=torch.float32
-        ).repeat((self.num_envs, 1, 1))
-        self.feet_z_w = math_utils.quat_apply(self.feet_quat_w, axis_z_feet)  # torch.Size([4096, 2, 3])
-        self.feet_x_w = math_utils.quat_apply(self.feet_quat_w, axis_x_feet)  # torch.Size([4096, 2, 3])
-        # print(self.feet_z_w[0])
-        # print(self.feet_x_w[0])
-        # ----------------------------------------------------------------------关键是目前usd的feet1坐标系不在底面
-        # ----------------------------------------------------------------------还有注意b(feet1)的坐标系是Xform并没有旋转
+        self.base_lin_vel_w = self._robot.data.body_link_vel_w[:, 6, :3].squeeze()  # torch.Size([4096, 3])
+        self.base_lin_vel_forward_w = torch.sum(self.base_lin_vel_w * self.base_heading_w, dim=-1)  # 法一 torch.Size([4096])
+        # self.base_lin_vel_forward_w = torch.einsum('ij,ij->i', self.base_lin_vel_w, self.base_heading_w)  # 法二
+        # self.base_lin_vel_forward_w = (self.base_lin_vel_w @ self.base_heading_w.unsqueeze(-1)).squeeze(-1)  # 法三
         
         obs = torch.cat(
             [
                 tensor
                 for tensor in (
-                    # self.feet_quat_w[:, [0, ], 3], # 2 * torch.atan2(z, w)
                     self.base_quat_w,
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                     self._robot.data.joint_vel,
@@ -258,7 +226,6 @@ class ZbotDirectEnvV0(DirectRLEnv):
             ],
             dim=-1,
         )
-        # print(obs.shape)
         observations = {"policy": obs}
         return observations
 
@@ -277,29 +244,24 @@ class ZbotDirectEnvV0(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        net_contact_forces = self._contact_sensor.data.net_forces_w_history
-        self.feet_contact_forces = torch.mean(
-            self._contact_sensor.data.net_forces_w_history[:, :, self._feet_ids, 2],
-            dim=1,
-        ).squeeze()
-        self.feet_air_times = self._contact_sensor.data.last_air_time[:, self._feet_ids]
-        self.feet_contact_times = self._contact_sensor.data.current_contact_time[
-            :, self._feet_ids
-        ]
-        # self.feet_contact_forces = self._contact_sensor.data.net_forces_w[:, self._feet_ids, 2].squeeze()
+
+        filter_contact_forces = torch.cat((self._contact_sensor_1.data.force_matrix_w, 
+                                           self._contact_sensor_2.data.force_matrix_w, 
+                                           self._contact_sensor_3.data.force_matrix_w, 
+                                           self._contact_sensor_4.data.force_matrix_w), dim=2)
+        
+        # died = torch.any(torch.max(torch.norm(filter_contact_forces, dim=-1), dim=1)[0] > 1.0, dim=1)
         died = torch.any(
             torch.max(
-                torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1
+                torch.norm(filter_contact_forces, dim=-1), dim=1
             )[0]
             > 1.0,
             dim=1,
         )
-        
-        died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)
-        self.base_pos_y_err = self.base_pos_w[:,1] - self._terrain.env_origins[:,1]
-        died_6 = (self.base_pos_y_err.abs() > 0.5)
+
+        self.base_pos_x_err = self.base_pos_w[:,0] - self._terrain.env_origins[:,0] + 0.318
+        died_1 = (self.base_pos_x_err.abs() > 0.2)
         died |= died_1
-        died |= died_6
 
         return died, time_out
 
@@ -326,10 +288,8 @@ class ZbotDirectEnvV0(DirectRLEnv):
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         self.p_delta[env_ids] = 0.0
-        self.feet_down_pos_last[env_ids] = (self._robot.data.body_link_pos_w[:, self.feet_body_idx])[env_ids]
-        self.feet_force_sum[env_ids] = 0.0
-        self.base_heading_x_sum[env_ids] = 0.0
-        self.base_pos_y_err_sum[env_ids] = 0.0
+        self.base_heading_y_sum[env_ids] = 0.0
+        self.base_pos_x_err_sum[env_ids] = 0.0
 
         # Logging
         extras = dict()
@@ -343,7 +303,7 @@ class ZbotDirectEnvV0(DirectRLEnv):
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
         extras = dict()
-        extras["Episode_Termination/body_contact"] = torch.count_nonzero(
+        extras["Episode_Termination/died"] = torch.count_nonzero(
             self.reset_terminated[env_ids]
         ).item()
         extras["Episode_Termination/time_out"] = torch.count_nonzero(
@@ -351,46 +311,33 @@ class ZbotDirectEnvV0(DirectRLEnv):
         ).item()
         self.extras["log"].update(extras)
 
-    def _reward_feet_forward(self):
-        feet_forward = torch.sum(
-            torch.norm(
-                self.feet_x_w - self.base_dir_forward_w.unsqueeze(1),
-                dim=-1,
-            ),
-            dim=-1,
-        )
-        return feet_forward
-    
-    def _reward_feet_downward(self):
-        feet_downward = torch.sum(
-            torch.norm(
-                (self.feet_z_w - self.z_w),
-                dim=-1,
-            ),
-            dim=-1,
-        )
-        return feet_downward
-
-    def _reward_base_heading_x(self):
-        return torch.abs(self.base_heading_x_err)
-    
-    def _reward_base_heading_x_sum(self):
-        self.base_heading_x_sum += 0.01 * (self.base_heading_x_err)
-        self.base_heading_x_sum = torch.clip(self.base_heading_x_sum, -1, 1)
-        return torch.abs(self.base_heading_x_sum)
-
     def _reward_base_vel_forward(self):
         base_vel_forward = torch.tanh(10.0 * self.base_lin_vel_forward_w / self.joint_speed_limit.squeeze())
         return base_vel_forward
+    
+    def _reward_base_up_z(self):
+        return torch.abs(self.base_up_w[:, 1])
+    
+    def _reward_base_heading_y(self):
+        return torch.abs(self.base_heading_y_err)
+    
+    def _reward_base_heading_y_sum(self):
+        self.base_heading_y_sum += 0.01 * (self.base_heading_y_err)
+        self.base_heading_y_sum = torch.clip(self.base_heading_y_sum, -1, 1)
+        return torch.abs(self.base_heading_y_sum)
 
-    def _reward_base_pos_y_err(self):
-        y_err = torch.abs(self.feet_pos_w[:,0, 1] + self.feet_pos_w[:,1, 1] - 2.0*self._terrain.env_origins[:,1]) + torch.abs(self.base_pos_w[:,1] - self._terrain.env_origins[:,1])
-        return y_err
+    def _reward_base_pos_x_err(self):
+        x_err = torch.abs(self._robot.data.body_com_pos_w[:, 0, 0] 
+                          + self._robot.data.body_com_pos_w[:, 11, 0] 
+                          - 2.0*self._terrain.env_origins[:,0]
+                          + 0.636) 
+        + torch.abs(self.base_pos_x_err)
+        return x_err
 
-    def _reward_base_pos_y_err_sum(self):
-        self.base_pos_y_err_sum += 0.01 * (self.base_pos_y_err)
-        self.base_pos_y_err_sum = torch.clip(self.base_pos_y_err_sum, -1, 1)
-        return torch.abs(self.base_pos_y_err_sum)
+    def _reward_base_pos_x_err_sum(self):
+        self.base_pos_x_err_sum += 0.01 * (self.base_pos_x_err)
+        self.base_pos_x_err_sum = torch.clip(self.base_pos_x_err_sum, -1, 1)
+        return torch.abs(self.base_pos_x_err_sum)
 
     def _reward_action_rate(self):
         # action rate
@@ -398,68 +345,9 @@ class ZbotDirectEnvV0(DirectRLEnv):
             torch.square(self._actions - self._previous_actions), dim=1
         )
         return action_rate
-
-    def _reward_step_length(self):
-        # Reward z axis base linear velocity
-
-        force_c = 10.0
-        # feet_just_down
-        feet_down_idx = torch.logical_and(
-            (self.feet_contact_forces > force_c),
-            (self.feet_contact_forces_last < force_c),
-        )  # "掩码索引"（boolean indexing）
-
-        feet_step_vec_w = self.feet_pos_w - self.feet_down_pos_last
-        feet_step_length_w = torch.sum(feet_step_vec_w * self.base_dir_forward_w.unsqueeze(1), dim=-1)  # 法一
-        # feet_step_length_w = (feet_step_vec_w @ self.base_dir_forward_w.unsqueeze(-1)).squeeze(-1)  # 法二
-        # feet_step_length_w = torch.einsum(
-        #     'bij,bj->bi', 
-        #     feet_step_vec_w, 
-        #     self.base_dir_forward_w
-        # )  # 法三
-        self.feet_step_length[feet_down_idx] = feet_step_length_w[feet_down_idx]
-
-        rew_feet_step_length = torch.min(self.feet_step_length, dim=-1)[0]
-        
-        self.feet_down_pos_last[feet_down_idx, :] = self.feet_pos_w[feet_down_idx, :]
-        self.feet_contact_forces_last[:] = self.feet_contact_forces[:]  # refresh last
-        return torch.tanh(15.0*rew_feet_step_length)
-
-    def _reward_airtime_balance(self):
-        airtime_balance = torch.abs(
-            self.feet_air_times[:, 0] - self.feet_air_times[:, 1]
-        )
-        return airtime_balance
-
-    def _reward_airtime_sum(self):
-        airtime_sum = torch.tanh(torch.sum(self.feet_air_times, dim=-1))
-        return airtime_sum
-    
-    def _reward_feet_slide(self):
-        """Penalize feet sliding.
-
-        This function penalizes the agent for sliding its feet on the ground. The reward is computed as the
-        norm of the linear velocity of the feet multiplied by a binary contact sensor. This ensures that the
-        agent is penalized only when the feet are in contact with the ground.
-        """
-        # Penalize feet sliding
-        contacts = self.feet_contact_forces > 1.0
-        feet_vel = self._robot.data.body_com_lin_vel_w[:, self.feet_body_idx, :2]
-        feet_slide = torch.sum(feet_vel.norm(dim=-1) * contacts, dim=1)
-        return feet_slide
     
     def _reward_torques(self):
         # Penalize joint torques
         joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
         return joint_torques
-    
-    def _reward_feet_force_diff(self):
-        feet_force_diff = (self.feet_contact_forces[:, 1] - self.feet_contact_forces[:, 0]) * torch.sign(self.feet_force_sum)
-        return feet_force_diff
-    
-    def _reward_feet_force_sum(self):
-        self.feet_force_sum += 0.001 * (
-            self.feet_contact_forces[:, 0] - self.feet_contact_forces[:, 1]
-        )
-        return torch.abs(self.feet_force_sum)
     

@@ -12,6 +12,7 @@ from . import agents
 # from .zbot_env_v08 import ZbotSEnv, ZbotSEnvCfg
 from .zbot_env_v09 import ZbotSEnv, ZbotSEnvCfg
 # from .zbot_env_v10 import ZbotSEnv, ZbotSEnvCfg # for 6 modules wiht 1 node module
+from .zbot_direct_6dof_snake_v0 import ZbotDirectEnvV0, ZbotDirectEnvCfgV0
 
 ##
 # Register Gym environments.
@@ -24,6 +25,16 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": ZbotSEnvCfg, 
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ZbotSFlatPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="zbot-6s-snake-v0",
+    entry_point="zbot.tasks.zbot6_direct:ZbotDirectEnvV0",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": ZbotDirectEnvCfgV0,
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfgV1",
     },
 )
 
