@@ -6,8 +6,7 @@ from . import agents
 from .zbot6b_env_v2 import ZbotBEnv, ZbotBEnvCfg
 from .zbot_direct_6dof_bipedal_env import ZbotDirectEnvCfg, ZbotDirectEnv
 from .zbot_direct_6dof_bipedal_env_v2 import ZbotDirectEnvCfgV2, ZbotDirectEnvV2  # not project to base
-
-
+from .zbot_direct_6dof_bipedal_env_v3 import ZbotDirectEnvCfgV3, ZbotDirectEnvV3  # add node module
 
 ##
 # Register Gym environments.
@@ -40,5 +39,15 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": ZbotDirectEnvCfgV2,
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfgV2",
+    },
+)
+
+gym.register(
+    id="zbot-6b-walking-v3",
+    entry_point="zbot.tasks.zbot6b_direct:ZbotDirectEnvV3",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": ZbotDirectEnvCfgV3,
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfgV3",
     },
 )
