@@ -18,12 +18,12 @@ from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg 
 from isaaclab.utils import configclass
 
-from zbot.assets import ZBOT_6S_1_CFG
+from zbot.assets import ZBOT_12S_1_CFG
 
 @configclass
-class ZbotDirectEnvCfgV3(DirectRLEnvCfg):
+class Zbot12BEnvCfg(DirectRLEnvCfg):
     # robot
-    robot: ArticulationCfg = ZBOT_6S_1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot: ArticulationCfg = ZBOT_12S_1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
         history_length=5,
@@ -34,15 +34,15 @@ class ZbotDirectEnvCfgV3(DirectRLEnvCfg):
 
     # env
     episode_length_s = 20.0
-    decimation = 4  # 2
-    action_space = 6  #24 for sin ;  6 for pd
-    observation_space = 23
+    decimation = 4
+    action_space = 12  # for pd; * 3 for sin
+    observation_space = 41
     state_space = 0
-    termination_height = 0.18
+    termination_height = 0.4
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
-        dt=1 / 200.0,  # 1 / 60.0,
+        dt=1 / 200.0,
         render_interval=decimation,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -71,41 +71,78 @@ class ZbotDirectEnvCfgV3(DirectRLEnvCfg):
         num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
     
+    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    #   train reward for just stepping walk base 2000 step0
+    reward_cfg = {
+        "reward_scales": {
+            "base_vel_forward": 1.0,
+            "feet_downward": -1.0,
+            "base_upward": -1.0,
+            "base_heading_x": -1.0,
+            # "base_heading_x_sum": -1.0,
+            "feet_force_diff": 0.5,
+            "feet_force_sum": -0.1,
+            "base_pos_y_err": -1.0,
+            # "feet_slide": -10.0,
+            # "airtime_sum": 10.0,
+        },
+    }
+
     # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward for just stepping walk base 2000 step0
+    # #   train reward 2000 step1 v0 use this
     # reward_cfg = {
     #     "reward_scales": {
     #         "base_vel_forward": 1.0,
     #         "feet_downward": -1.0,
-    #         "feet_forward": -1.0,  # -0.5,
+    #         "feet_forward": -1.0,
     #         "base_heading_x": -1.0,
-    #         # "base_heading_x_sum": -1.0,
-    #         "feet_force_diff": 0.5,
-    #         "feet_force_sum": -0.1,
+    #         "base_heading_x_sum": -3.0,
+    #         "step_length": 5.0,
+    #         "airtime_balance": -15.0,
+    #         "action_rate": -0.1,
+    #         "torques": -0.002,
+    #         "feet_slide": -10.0,
     #         "base_pos_y_err": -1.0,
-    #         # "feet_slide": -10.0,
-    #         # "airtime_sum": 10.0,
     #     },
     # }
 
-    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   train reward 2000 step1 v0 use this
-    reward_cfg = {
-        "reward_scales": {
-            "base_vel_forward": 1.0,
-            "feet_downward": -2.0,
-            "feet_forward": -0.5,
-            "base_heading_x": -1.0,
-            "base_heading_x_sum": -3.0,
-            "step_length": 5.0,
-            "airtime_balance": -15.0,
-            "airtime_sum": 2.0,
-            "action_rate": -0.1,
-            "torques": -0.002,
-            "feet_slide": -10.0,
-            "base_pos_y_err": -1.0,
-        },
-    }
+    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    # #   train reward 2000 step1 v1
+    # reward_cfg = {
+    #     "reward_scales": {
+    #         "base_vel_forward": 1.0,
+    #         "feet_downward": -1.5,
+    #         "feet_forward": -0.5,
+    #         "base_heading_x": -1.0,
+    #         "base_heading_x_sum": -3.0,
+    #         "step_length": 5.0,
+    #         "airtime_balance": -15.0,
+    #         "action_rate": -0.1,
+    #         "torques": -0.002,
+    #         "feet_slide": -10.0,
+    #         "base_pos_y_err": -1.5,
+    #         "base_pos_y_err_sum": -1.5,
+    #     },
+    # }
+
+    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    # #   train reward 2000 step1 v2
+    # reward_cfg = {
+    #     "reward_scales": {
+    #         "base_vel_forward": 1.0,
+    #         "feet_downward": -2.0,
+    #         "feet_forward": -0.2,
+    #         "base_heading_x": -1.0,
+    #         "base_heading_x_sum": -5.0,
+    #         "step_length": 5.0,
+    #         "airtime_balance": -15.0,
+    #         "action_rate": -0.1,
+    #         "torques": -0.002,
+    #         "feet_slide": -10.0,
+    #         "base_pos_y_err": -2.0,
+    #         "base_pos_y_err_sum": -2.0,
+    #     },
+    # }
 
     # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
     # #   train reward 2000 step2
@@ -165,14 +202,11 @@ class ZbotDirectEnvCfgV3(DirectRLEnvCfg):
     #     },
     # }
 
-class ZbotDirectEnvV3(DirectRLEnv):
-    cfg: ZbotDirectEnvCfgV3
+class Zbot12BEnv(DirectRLEnv):
+    cfg: Zbot12BEnvCfg
 
-    def __init__(self, cfg: ZbotDirectEnvCfgV3, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: Zbot12BEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
-
-        print(self._robot.find_bodies(".*"))
-        print(self._robot.find_joints(".*"))
 
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(
@@ -202,7 +236,7 @@ class ZbotDirectEnvV3(DirectRLEnv):
         self.base_heading_x_sum = torch.zeros(self.num_envs, device=self.device)
         self.base_pos_y_err_sum = torch.zeros(self.num_envs, device=self.device)
 
-        self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
+        self.joint_speed_limit = (torch.rand(self.num_envs, 1, device=self.device) * 1.8 + 0.2) * torch.pi
 
         self.p_delta = torch.zeros_like(self._robot.data.default_joint_pos)
         self.reward_scales = cfg.reward_cfg["reward_scales"]
@@ -239,8 +273,7 @@ class ZbotDirectEnvV3(DirectRLEnv):
         # #mode 1
         self._actions = torch.tanh(actions.clone())
         self.p_delta[:] += (
-            torch.pi
-            * self._actions
+            self._actions
             * self.joint_speed_limit
             * self.step_dt
         )
@@ -280,25 +313,12 @@ class ZbotDirectEnvV3(DirectRLEnv):
         self.base_shoulder_w = math_utils.quat_apply(self.base_quat_w, axis_y)  # torch.Size([4096, 3])
         self.base_dir_forward_w = torch.cross(self._robot.data.GRAVITY_VEC_W, self.base_shoulder_w)  # torch.Size([4096, 3])
         self.base_heading_x_err = -self.base_dir_forward_w[..., 1]  # torch.Size([4096])
+        # self._robot.data.heading_w  # z轴 radius
         
         self.base_lin_vel_w = self._robot.data.body_com_lin_vel_w[:, self.base_body_idx, :].squeeze()  # torch.Size([4096, 3])
         self.base_lin_vel_forward_w = torch.sum(self.base_lin_vel_w * self.base_dir_forward_w, dim=-1)  # 法一 torch.Size([4096])
         # self.base_lin_vel_forward_w = torch.einsum('ij,ij->i', self.base_lin_vel_w, self.base_dir_forward_w)  # 法二
         # self.base_lin_vel_forward_w = (self.base_lin_vel_w @ self.base_dir_forward_w.unsqueeze(-1)).squeeze(-1)  # 法三
-
-        self.z_w = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 2, 1))  # torch.Size([4096, 2, 3])
-        axis_x_feet = torch.tensor(
-            [1, 0, 0], device=self.sim.device, dtype=torch.float32
-        ).repeat((self.num_envs, 2, 1))
-        axis_z_feet = torch.tensor(
-            [0, 0, 1], device=self.sim.device, dtype=torch.float32
-        ).repeat((self.num_envs, 2, 1))
-        self.feet_z_w = math_utils.quat_apply(self.feet_quat_w, axis_z_feet)  # torch.Size([4096, 2, 3])
-        self.feet_x_w = math_utils.quat_apply(self.feet_quat_w, axis_x_feet)  # torch.Size([4096, 2, 3])
-        # print(self.feet_z_w[0])
-        # print(self.feet_x_w[0])
-        # ----------------------------------------------------------------------关键是目前usd的feet1坐标系不在底面
-        # ----------------------------------------------------------------------还有注意b(feet1)的坐标系是Xform并没有旋转
         
         obs = torch.cat(
             [
@@ -340,9 +360,6 @@ class ZbotDirectEnvV3(DirectRLEnv):
             dim=1,
         ).squeeze()
         self.feet_air_times = self._contact_sensor.data.last_air_time[:, self._feet_ids]
-        self.feet_contact_times = self._contact_sensor.data.current_contact_time[
-            :, self._feet_ids
-        ]
         # self.feet_contact_forces = self._contact_sensor.data.net_forces_w[:, self._feet_ids, 2].squeeze()
         died = torch.any(
             torch.max(
@@ -353,8 +370,6 @@ class ZbotDirectEnvV3(DirectRLEnv):
         )
         
         died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)
-        # print(self.base_pos_w[:2, 2])  # [0.2120, 0.2120]
-        # print(self._robot.data.body_link_pos_w[0, 12, 1] - self._terrain.env_origins[0,1])  # 0.3872
         self.base_pos_y_err = self.base_pos_w[:,1] - self._terrain.env_origins[:,1]
         died_6 = (self.base_pos_y_err.abs() > 0.5)
         died |= died_1
@@ -411,9 +426,15 @@ class ZbotDirectEnvV3(DirectRLEnv):
         self.extras["log"].update(extras)
 
     def _reward_feet_forward(self):
+        axis_x_feet = torch.tensor(
+            [1, 0, 0], device=self.sim.device, dtype=torch.float32
+        ).repeat((self.num_envs, 2, 1))
+        feet_x_w = math_utils.quat_apply(self.feet_quat_w, axis_x_feet)  # torch.Size([4096, 2, 3])
+        # print(self.feet_x_w[0])
+        # 目前usd的foot坐标系不在底面, 还有注意b(foot1)的坐标系是Xform并没有旋转
         feet_forward = torch.sum(
             torch.norm(
-                self.feet_x_w - self.base_dir_forward_w.unsqueeze(1),
+                feet_x_w - self.base_dir_forward_w.unsqueeze(1),
                 dim=-1,
             ),
             dim=-1,
@@ -421,14 +442,27 @@ class ZbotDirectEnvV3(DirectRLEnv):
         return feet_forward
     
     def _reward_feet_downward(self):
+        axis_z_feet = torch.tensor(
+            [[0, 1, 0], [0, -1, 0]], device=self.sim.device, dtype=torch.float32
+        ).repeat((self.num_envs, 1, 1))
+        feet_z_w = math_utils.quat_apply(self.feet_quat_w, axis_z_feet)  # torch.Size([4096, 2, 3])
+        # print(feet_z_w[0])
+        # 目前usd的foot坐标系不在底面, 还有注意b(foot1)的坐标系是Xform并没有旋转
+        z_w = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 2, 1))  # torch.Size([4096, 2, 3])
         feet_downward = torch.sum(
             torch.norm(
-                (self.feet_z_w - self.z_w),
+                (feet_z_w - z_w),
                 dim=-1,
             ),
             dim=-1,
         )
         return feet_downward
+
+    def _reward_base_upward(self):
+        axis_z = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
+        up_w = math_utils.quat_apply(self.base_quat_w, axis_z)  # torch.Size([4096, 3])
+        upward = torch.norm((up_w - axis_z), dim=-1,)
+        return upward
 
     def _reward_base_heading_x(self):
         return torch.abs(self.base_heading_x_err)
