@@ -38,7 +38,7 @@ class Zbot12BEnvCfg(DirectRLEnvCfg):
     action_space = 12  # for pd; * 3 for sin
     observation_space = 41
     state_space = 0
-    termination_height = 0.4
+    termination_height = 0.48
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -71,40 +71,40 @@ class Zbot12BEnvCfg(DirectRLEnvCfg):
         num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
     
-    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   train reward for just stepping walk base 2000 step0
-    reward_cfg = {
-        "reward_scales": {
-            "base_vel_forward": 1.0,
-            "feet_downward": -1.0,
-            "base_upward": -1.0,
-            "base_heading_x": -1.0,
-            # "base_heading_x_sum": -1.0,
-            "feet_force_diff": 0.5,
-            "feet_force_sum": -0.1,
-            "base_pos_y_err": -1.0,
-            # "feet_slide": -10.0,
-            # "airtime_sum": 10.0,
-        },
-    }
-
     # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   train reward 2000 step1 v0 use this
+    # #   train reward for just stepping walk base 2000 step0
     # reward_cfg = {
     #     "reward_scales": {
     #         "base_vel_forward": 1.0,
     #         "feet_downward": -1.0,
-    #         "feet_forward": -1.0,
+    #         "base_upward": -1.0,
     #         "base_heading_x": -1.0,
-    #         "base_heading_x_sum": -3.0,
-    #         "step_length": 5.0,
-    #         "airtime_balance": -15.0,
-    #         "action_rate": -0.1,
-    #         "torques": -0.002,
-    #         "feet_slide": -10.0,
+    #         # "base_heading_x_sum": -1.0,
+    #         "feet_force_diff": 0.5,
+    #         "feet_force_sum": -0.1,
     #         "base_pos_y_err": -1.0,
+    #         # "feet_slide": -10.0,
+    #         # "airtime_sum": 10.0,
     #     },
     # }
+
+    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    #   train reward 2000 step1 v0 use this
+    reward_cfg = {
+        "reward_scales": {
+            "base_vel_forward": 0.5,
+            "feet_downward": -1.0,
+            "base_upward": -1.0,
+            "base_heading_x": -1.0,
+            "base_heading_x_sum": -3.0,
+            "step_length": 5.0,
+            "airtime_balance": -15.0,
+            "action_rate": -0.1,
+            "torques": -0.002,
+            "feet_slide": -10.0,
+            "base_pos_y_err": -1.0,
+        },
+    }
 
     # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
     # #   train reward 2000 step1 v1
