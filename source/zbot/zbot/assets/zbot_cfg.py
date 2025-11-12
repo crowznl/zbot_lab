@@ -33,6 +33,7 @@ usd_dir_path = ISAACLAB_ASSETS_DATA_DIR
                     # self._num_envs = len(self._parent_prims)
 robot_usd = "zbot_6s_v03.usd"
 robot_6s_usd = "zbot_6s_new.usd"  # body renamed to a*, b*, foot*, base
+robot_6s_usd_v1 = "zbot_6s_v08.usd"  # recreate articulation root at base
 
 robot_6_node_usd = "zbot_6s_v05.usd"
 robot_6_node_usd_v1 = "zbot_6s_v06.usd"  # change Xform's frame align to initial pose world frame
@@ -766,6 +767,53 @@ ZBOT_12S_1_CFG = ArticulationCfg(
 ZBOT_6S_2_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=usd_dir_path + robot_6_node_usd_v2,
+        activate_contact_sensors=True,  # True
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,  # True
+            solver_position_iteration_count=4, 
+            solver_velocity_iteration_count=0
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.212),
+        rot=(1.0, 0.0, 0.0, 0.0),
+        joint_pos={
+            "joint1": 0.785398,  # 45 degrees
+            "joint2": -1.570796,
+            "joint3": 0.0,
+            "joint7": -0.785398,
+            "joint8": 1.570796,
+            "joint9": 0.0,
+        },
+        joint_vel={
+            "joint.*": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=1.0,
+    actuators={
+        "zbot_six": ImplicitActuatorCfg(
+            joint_names_expr=["joint.*"],
+            effort_limit=20,
+            velocity_limit=10,
+            stiffness=20,  # kp
+            damping=0.5,  # kd
+            friction=0.0,
+        ),
+    },
+)
+
+ZBOT_6S_V1_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=usd_dir_path + robot_6s_usd_v1,
         activate_contact_sensors=True,  # True
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,

@@ -13,7 +13,7 @@ from zbot.tasks.zbotlab_manager.zbotlab_env_cfg import ZbotLabRoughEnvCfg, Rewar
 ##
 # Pre-defined configs
 ##
-from zbot.assets import ZBOT_6S_2_CFG
+from zbot.assets import ZBOT_6S_2_CFG, ZBOT_6S_V1_CFG
 
 
 @configclass
@@ -28,6 +28,14 @@ class Zbot6BRewardsCfg(RewardsCfg):
             "threshold": 0.3,
         },
     )
+    feet_slide = RewTerm(
+        func=mdp.feet_slide,
+        weight=-0.1,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*"),
+            "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
+        },
+    )
 
 
 @configclass
@@ -39,7 +47,12 @@ class Zbot6BRoughEnvCfg(ZbotLabRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         # scene
-        self.scene.robot = ZBOT_6S_2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = ZBOT_6S_V1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+        # commands reduce
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.heading = (-0.314, 0.314)
 
         # actions
         self.actions.joint_pos.scale = 0.5
