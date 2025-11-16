@@ -14,15 +14,15 @@ class Zbot6BFlatEnvCfg(Zbot6BRoughEnvCfg):
         # post init of parent
         super().__post_init__()
         # rewards
-        # self.rewards.flat_orientation_l2.weight = -2.5
+        self.rewards.gait.weight = 2.0
         # self.rewards.feet_air_time.weight = 5.0
         # self.rewards.feet_slide.weight = -1.0
+        # self.rewards.flat_orientation_l2.weight = -2.5
         # change terrain to flat
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
         # no terrain curriculum
         self.curriculum.terrain_levels = None
-        self.curriculum.lin_vel_cmd_levels = None
 
 
 class Zbot6BFlatEnvCfg_PLAY(Zbot6BFlatEnvCfg):

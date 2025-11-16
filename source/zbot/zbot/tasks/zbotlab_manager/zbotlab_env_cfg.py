@@ -83,6 +83,19 @@ class MySceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
 
+    # base_velocity = mdp.UniformVelocityCommandCfg(
+    #     asset_name="robot",
+    #     resampling_time_range=(10.0, 10.0),
+    #     rel_standing_envs=0.02,
+    #     rel_heading_envs=1.0,
+    #     heading_command=True,
+    #     heading_control_stiffness=0.5,
+    #     debug_vis=True,
+    #     ranges=mdp.UniformVelocityCommandCfg.Ranges(
+    #         lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
+    #     ),
+    # )
+
     base_velocity = mdp.UniformLevelVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
@@ -153,6 +166,8 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            # "static_friction_range": (0.8, 0.8),
+            # "dynamic_friction_range": (0.6, 0.6),
             "static_friction_range": (0.3, 1.0),
             "dynamic_friction_range": (0.3, 1.0),
             "restitution_range": (0.0, 0.0),
@@ -170,14 +185,14 @@ class EventCfg:
         },
     )
 
-    # base_com = EventTerm(
-    #     func=mdp.randomize_rigid_body_com,
-    #     mode="startup",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-    #         "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
-    #     },
-    # )
+    base_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
+        },
+    )
 
     # reset
     # base_external_force_torque = EventTerm(
@@ -195,7 +210,7 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
+            "velocity_range": {  # default + range
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
                 "z": (0.0, 0.0),
@@ -206,14 +221,15 @@ class EventCfg:
         },
     )
 
-    # reset_robot_joints = EventTerm(
-    #     func=mdp.reset_joints_by_scale,
-    #     mode="reset",
-    #     params={
-    #         "position_range": (1.0, 1.0),
-    #         "velocity_range": (-1.0, 1.0),
-    #     },
-    # )
+    # 非常关键，不能注释掉，否则reset不能回到初始状态，可能Manager的reset joint是通过这个event实现的
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (1.0, 1.0),
+            "velocity_range": (1.0, 1.0),  # default * range
+        },
+    )
 
     # interval
     push_robot = EventTerm(
@@ -268,7 +284,7 @@ class RewardsCfg:
         params={
             "std": 0.05,
             "tanh_mult": 2.0,
-            "target_height": 0.1,
+            "target_height": 0.01,
             "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
         },
     )
@@ -316,7 +332,8 @@ class TerminationsCfg:
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
     base_height = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": 0.2}
+        func=mdp.root_height_below_minimum, 
+        params={"minimum_height": 0.2}
     )
 
 

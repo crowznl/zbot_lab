@@ -34,11 +34,11 @@ class Zbot6BRoughEnvCfg(ZbotLabRoughEnvCfg):
         # self.actions.joint_pos.scale = 0.5
 
         # events
-        self.events.push_robot = None
         self.events.add_base_mass = None
-        # self.events.reset_base = None
-        # self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        self.events.base_com = None
         # self.events.base_external_force_torque.params["asset_cfg"].body_names = ["base"]
+        # self.events.reset_robot_joints.params["position_range"] = (0.5, 1.5)
+        self.events.push_robot = None
 
         # terminations
         # self.terminations.base_contact.params["sensor_cfg"].body_names = ["base|a.*|b.*"]
