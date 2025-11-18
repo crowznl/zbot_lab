@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from isaaclab.envs import mdp
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_apply_inverse, yaw_quat
+from isaaclab.utils.math import quat_apply, quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -25,6 +25,51 @@ if TYPE_CHECKING:
 """
 Feet rewards.
 """
+
+def init_my_data(env: ManagerBasedRLEnv, env_ids: torch.Tensor | None):
+    # Initialize foot-related data in the env
+    env.feet_step_length = torch.zeros((env.num_envs, 2), device=env.device)
+    env.feet_contact_forces_last = torch.zeros((env.num_envs, 2), device=env.device)
+    env.feet_down_pos_last = torch.zeros((env.num_envs, 2, 3), device=env.device)
+    env.axis_y = torch.tensor([0, 1, 0], device=env.device, dtype=torch.float32).repeat((env.num_envs, 1))
+
+def reset_my_data(env: ManagerBasedRLEnv, env_ids: torch.Tensor, asset_cfg: SceneEntityCfg):
+    # Reset foot-related data for given env ids
+    asset = env.scene[asset_cfg.name]
+    env.feet_down_pos_last[env_ids] = (asset.data.body_link_pos_w[:, asset_cfg.body_ids])[env_ids]
+
+def foot_step_length(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    # Reward foot step length
+    asset = env.scene[asset_cfg.name]
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # feet_just_down
+    feet_contact_forces = torch.mean(
+            contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, 2],
+            dim=1,
+        ).squeeze()
+    feet_down_idx = torch.logical_and(
+        (feet_contact_forces > 10.0),
+        (env.feet_contact_forces_last < 10.0),
+    )  # "掩码索引"（boolean indexing）
+
+    base_shoulder_w = quat_apply(asset.data.root_quat_w, env.axis_y)  # torch.Size([4096, 3])
+    base_dir_forward_w = torch.cross(asset.data.GRAVITY_VEC_W, base_shoulder_w, dim=-1)  # torch.Size([4096, 3])
+    feet_pos_w = asset.data.body_link_pos_w[:, asset_cfg.body_ids]
+    feet_step_vec_w = feet_pos_w - env.feet_down_pos_last
+    feet_step_length_w = torch.abs(torch.sum(feet_step_vec_w * base_dir_forward_w.unsqueeze(1), dim=-1))  # 法一
+    # feet_step_length_w = (feet_step_vec_w @ base_dir_forward_w.unsqueeze(-1)).squeeze(-1)  # 法二
+    # feet_step_length_w = torch.einsum(
+    #     'bij,bj->bi',
+    #     feet_step_vec_w,
+    #     base_dir_forward_w
+    # )  # 法三
+    env.feet_step_length[feet_down_idx] = feet_step_length_w[feet_down_idx]
+
+    rew_feet_step_length = torch.min(env.feet_step_length, dim=-1)[0]
+
+    env.feet_down_pos_last[feet_down_idx, :] = feet_pos_w[feet_down_idx, :]
+    env.feet_contact_forces_last[:] = feet_contact_forces[:]  # refresh last
+    return torch.tanh(15.0*rew_feet_step_length)
 
 def foot_clearance_reward(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, target_height: float, std: float, tanh_mult: float
@@ -61,7 +106,9 @@ def feet_gait(
 
     if command_name is not None:
         cmd_norm = torch.norm(env.command_manager.get_command(command_name), dim=1)
-        reward *= cmd_norm > 0.1
+        # reward *= cmd_norm > 0.1
+        reward *= cmd_norm > 0.05
+
     return reward
 
 def feet_air_time(

@@ -161,6 +161,11 @@ class EventCfg:
     """Configuration for events."""
 
     # startup
+    init_my_data = EventTerm(
+        func=mdp.init_my_data,
+        mode="startup",
+    )
+
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="startup",
@@ -231,6 +236,14 @@ class EventCfg:
         },
     )
 
+    reset_my_data = EventTerm(
+        func=mdp.reset_my_data,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
+        },
+    )
+
     # interval
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
@@ -259,11 +272,19 @@ class RewardsCfg:
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
     # -- feet
+    foot_step_length = RewTerm(
+        func=mdp.foot_step_length,
+        weight=2.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*"),
+        },
+    )
     gait = RewTerm(
         func=mdp.feet_gait,
         weight=0.5,
         params={
-            "period": 1.6,
+            "period": 2.0,
             "offset": [0.0, 0.5],
             "threshold": 0.55,
             "command_name": "base_velocity",

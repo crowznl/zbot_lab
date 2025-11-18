@@ -313,7 +313,7 @@ class ZbotDirectEnvV2(DirectRLEnv):
         axis_z = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
         # base body axis z point to world Y
         self.base_shoulder_w = math_utils.quat_apply(self.base_quat_w, axis_z)  # torch.Size([4096, 3])
-        self.base_dir_forward_w = torch.cross(self._robot.data.GRAVITY_VEC_W, self.base_shoulder_w)  # torch.Size([4096, 3])
+        self.base_dir_forward_w = torch.cross(self._robot.data.GRAVITY_VEC_W, self.base_shoulder_w, dim=-1)  # torch.Size([4096, 3])
         self.base_heading_x_err = -self.base_dir_forward_w[..., 1]  # torch.Size([4096])
         
         self.base_lin_vel_w = self._robot.data.body_com_lin_vel_w[:, self.base_body_idx, :].squeeze()  # torch.Size([4096, 3])
@@ -392,7 +392,8 @@ class ZbotDirectEnvV2(DirectRLEnv):
             > 1.0,
             dim=1,
         )
-        
+        # print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
+        # print(self.base_quat_w[:2])  # [ 0.6003, -0.6003, -0.3735, -0.3739]
         died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)
         self.base_pos_y_err = self.base_pos_w[:,1] - self._terrain.env_origins[:,1]
         died_6 = (self.base_pos_y_err.abs() > 0.5)

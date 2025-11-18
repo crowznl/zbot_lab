@@ -13,7 +13,7 @@ from zbot.tasks.zbotlab_manager.zbotlab_env_cfg import ZbotLabRoughEnvCfg, Rewar
 ##
 # Pre-defined configs
 ##
-from zbot.assets import ZBOT_6S_2_CFG, ZBOT_6S_V1_CFG
+from zbot.assets import ZBOT_6S_2_CFG, ZBOT_6S_V1_CFG, ZBOT_6S_V2_CFG
 
 
 @configclass
@@ -23,7 +23,7 @@ class Zbot6BRoughEnvCfg(ZbotLabRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         # scene
-        self.scene.robot = ZBOT_6S_V1_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = ZBOT_6S_V2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
         # # commands reduce
         # self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
@@ -43,7 +43,7 @@ class Zbot6BRoughEnvCfg(ZbotLabRoughEnvCfg):
         # terminations
         # self.terminations.base_contact.params["sensor_cfg"].body_names = ["base|a.*|b.*"]
         self.terminations.base_contact = None
-        self.terminations.base_height.params["minimum_height"] = 0.18
+        self.terminations.base_height.params["minimum_height"] = 0.22
 
         # rewards
         # self.rewards.track_lin_vel_xy_exp.weight = 2.0
