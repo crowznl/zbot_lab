@@ -880,6 +880,7 @@ ZBOT_6S_V2_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.2545),
+        rot=(1.0, 0.0, 0.0, 0.0),
         # rot=(0.84805, 0.0, 0.52992, 0.0),
         joint_pos={
             "joint1": 2.02,

@@ -28,14 +28,17 @@ Feet rewards.
 
 def init_my_data(env: ManagerBasedRLEnv, env_ids: torch.Tensor | None):
     # Initialize foot-related data in the env
+    env.feet_force_sum = torch.zeros(env.num_envs, device=env.device)
     env.feet_step_length = torch.zeros((env.num_envs, 2), device=env.device)
     env.feet_contact_forces_last = torch.zeros((env.num_envs, 2), device=env.device)
     env.feet_down_pos_last = torch.zeros((env.num_envs, 2, 3), device=env.device)
-    env.axis_y = torch.tensor([0, 1, 0], device=env.device, dtype=torch.float32).repeat((env.num_envs, 1))
 
 def reset_my_data(env: ManagerBasedRLEnv, env_ids: torch.Tensor, asset_cfg: SceneEntityCfg):
     # Reset foot-related data for given env ids
     asset = env.scene[asset_cfg.name]
+    env.feet_force_sum[env_ids] = 0.0
+    env.feet_step_length[env_ids] = 0.0
+    env.feet_contact_forces_last[env_ids] = 0.0
     env.feet_down_pos_last[env_ids] = (asset.data.body_link_pos_w[:, asset_cfg.body_ids])[env_ids]
 
 def foot_step_length(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
@@ -52,7 +55,8 @@ def foot_step_length(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, sensor_c
         (env.feet_contact_forces_last < 10.0),
     )  # "掩码索引"（boolean indexing）
 
-    base_shoulder_w = quat_apply(asset.data.root_quat_w, env.axis_y)  # torch.Size([4096, 3])
+    y_w = torch.tensor([0, 1, 0], device=env.device, dtype=torch.float32).repeat((env.num_envs, 1))
+    base_shoulder_w = quat_apply(asset.data.root_quat_w, y_w)  # torch.Size([4096, 3])
     base_dir_forward_w = torch.cross(asset.data.GRAVITY_VEC_W, base_shoulder_w, dim=-1)  # torch.Size([4096, 3])
     feet_pos_w = asset.data.body_link_pos_w[:, asset_cfg.body_ids]
     feet_step_vec_w = feet_pos_w - env.feet_down_pos_last
@@ -71,6 +75,23 @@ def foot_step_length(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, sensor_c
     env.feet_contact_forces_last[:] = feet_contact_forces[:]  # refresh last
     return torch.tanh(15.0*rew_feet_step_length)
 
+def foot_downward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    asset = env.scene[asset_cfg.name]
+    z_w = torch.tensor([0, 0, 1], device=env.device, dtype=torch.float32).repeat((env.num_envs, 2, 1))  # torch.Size([4096, 2, 3])
+    axis_z_feet = torch.tensor(
+            [[0, 1, 0], [0, -1, 0]], device=env.device, dtype=torch.float32
+        ).repeat((env.num_envs, 1, 1))
+    feet_quat_w = asset.data.body_link_quat_w[:, asset_cfg.body_ids]
+    feet_z_w = quat_apply(feet_quat_w, axis_z_feet)  # torch.Size([4096, 2, 3])
+    feet_downward = torch.sum(
+            torch.norm(
+                (feet_z_w - z_w),
+                dim=-1,
+            ),
+            dim=-1,
+        )
+    return feet_downward
+
 def foot_clearance_reward(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, target_height: float, std: float, tanh_mult: float
 ) -> torch.Tensor:
@@ -78,6 +99,7 @@ def foot_clearance_reward(
     asset = env.scene[asset_cfg.name]
     foot_z_target_error = torch.square(asset.data.body_pos_w[:, asset_cfg.body_ids, 2] - target_height)
     foot_velocity_tanh = torch.tanh(tanh_mult * torch.norm(asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2], dim=2))
+    #摆动腿的error越小越好，而支撑腿的error大，但速度为0
     reward = foot_z_target_error * foot_velocity_tanh
     return torch.exp(-torch.sum(reward, dim=1) / std)
 
@@ -167,7 +189,7 @@ def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
         torch.clip(last_contact_time, max=0.5), dim=1
     )
 
-def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize feet sliding.
 
     This function penalizes the agent for sliding its feet on the ground. The reward is computed as the
@@ -183,6 +205,28 @@ def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = Scen
     reward = torch.sum(body_vel.norm(dim=-1) * contacts, dim=1)
     return reward
 
+def base_vel_forward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    asset = env.scene[asset_cfg.name]
+    
+    y_w = torch.tensor([0, 1, 0], device=env.device, dtype=torch.float32).repeat((env.num_envs, 1))
+    base_shoulder_w = quat_apply(asset.data.root_quat_w, y_w)  # torch.Size([4096, 3])
+    base_dir_forward_w = torch.cross(asset.data.GRAVITY_VEC_W, base_shoulder_w, dim=-1)  # torch.Size([4096, 3])
+
+    base_lin_vel_forward_w = torch.sum(asset.data.root_link_lin_vel_w * base_dir_forward_w, dim=-1)  # 法一 torch.Size([4096])
+    # base_lin_vel_forward_w = torch.tanh(base_lin_vel_forward_w)
+    return base_lin_vel_forward_w
+
+def feet_force_pattern(env, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    feet_contact_forces = torch.mean(
+            contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, 2],
+            dim=1,
+        ).squeeze()
+    feet_force_diff = (feet_contact_forces[:, 1] - feet_contact_forces[:, 0]) * torch.sign(env.feet_force_sum)
+    env.feet_force_sum += 0.001 * (
+        feet_contact_forces[:, 0] - feet_contact_forces[:, 1]
+    )
+    return 0.5 * feet_force_diff - 0.1 * torch.abs(env.feet_force_sum)
 
 def track_lin_vel_xy_yaw_frame_exp(
     env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")

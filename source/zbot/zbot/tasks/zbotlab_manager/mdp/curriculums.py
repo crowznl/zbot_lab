@@ -97,7 +97,7 @@ def ang_vel_cmd_levels(
 
     if env.common_step_counter % env.max_episode_length == 0:
         if reward > reward_term.weight * 0.8:
-            delta_command = torch.tensor([-0.1, 0.1], device=env.device)
+            delta_command = torch.tensor([-0.05, 0.05], device=env.device)
             ranges.ang_vel_z = torch.clamp(
                 torch.tensor(ranges.ang_vel_z, device=env.device) + delta_command,
                 limit_ranges.ang_vel_z[0],

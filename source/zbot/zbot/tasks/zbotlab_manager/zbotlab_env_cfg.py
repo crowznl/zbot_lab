@@ -104,10 +104,12 @@ class CommandsCfg:
         heading_command=False,
         debug_vis=True,
         ranges=mdp.UniformLevelVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.1, 0.1), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-0.1, 0.1)
+            # lin_vel_x=(-0.1, 0.1), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-0.1, 0.1)
+            lin_vel_x=(-0.1, 0.1), lin_vel_y=(0.0, 0.0), ang_vel_z=(0.0, 0.0)
         ),
         limit_ranges=mdp.UniformLevelVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 1.0), lin_vel_y=(-0.3, 0.3), ang_vel_z=(-0.2, 0.2)
+            # lin_vel_x=(-0.5, 1.0), lin_vel_y=(-0.3, 0.3), ang_vel_z=(-0.2, 0.2)
+            lin_vel_x=(-0.4, 0.3), lin_vel_y=(-0.2, 0.2), ang_vel_z=(-0.2, 0.2)
         ),
     )
 
@@ -266,8 +268,6 @@ class RewardsCfg:
     )
     # -- penalties
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
-    # lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    # ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
@@ -278,6 +278,13 @@ class RewardsCfg:
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*"),
+        },
+    )
+    foot_downward = RewTerm(
+        func=mdp.foot_downward,
+        weight=-1.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
         },
     )
     gait = RewTerm(
@@ -333,12 +340,22 @@ class RewardsCfg:
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*")},
     )
     # -- other
+    base_vel_forward = RewTerm(func=mdp.base_vel_forward, weight=1.0)
+    feet_force_pattern = RewTerm(
+        func=mdp.feet_force_pattern,
+        weight=1.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*"),
+        },
+    )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base|a.*|b.*"), "threshold": 1.0},
     )
     # -- optional penalties
+    # lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    # ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
