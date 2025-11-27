@@ -4,8 +4,7 @@
 [![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.0.0-silver)](https://isaac-sim.github.io/IsaacLab)
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://docs.python.org/3/whatsnew/3.10.html)
 [![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/20.04/)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
-[![License](https://img.shields.io/badge/license-MIT-yellow.svg)](https://opensource.org/license/mit)
+[![License](https://img.shields.io/badge/license-Apache2.0-yellow.svg)](https://opensource.org/license/apache-2-0)
 
 ## Overview
 
@@ -61,7 +60,9 @@ import zbot.tasks
 - Verify that this library is correctly installed by running the following command
 
 ```bash
-python scripts/rsl_rl/train.py --task=Template-Isaac-Velocity-Rough-Anymal-D-v0
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2
+# python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2 --num_envs 4096 --headless --max_iterations 2000 --resume --load_run=2025-11-04_13-15-04
+# python scripts/rsl_rl/play.py --task=Zbot-6b-walking-v2 --num_envs=64 --checkpoint=model_500.pt --video --video_length 500  # record video
 ```
 
 ### Set up IDE (Optional)
