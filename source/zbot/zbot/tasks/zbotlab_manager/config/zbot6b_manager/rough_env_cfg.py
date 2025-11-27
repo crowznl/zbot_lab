@@ -43,7 +43,7 @@ class Zbot6BRoughEnvCfg(ZbotLabRoughEnvCfg):
         # terminations
         # self.terminations.base_contact.params["sensor_cfg"].body_names = ["base|a.*|b.*"]
         self.terminations.base_contact = None
-        self.terminations.base_height.params["minimum_height"] = 0.22
+        # self.terminations.base_height.params["minimum_height"] = 0.20
 
         # rewards
         # self.rewards.track_lin_vel_xy_exp.weight = 2.0

@@ -1,54 +1,64 @@
-# Template for Isaac Lab Projects
+# ZBOT_LAB
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-4.5.0-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
 [![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.0.0-silver)](https://isaac-sim.github.io/IsaacLab)
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://docs.python.org/3/whatsnew/3.10.html)
 [![Linux platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/20.04/)
-[![Windows platform](https://img.shields.io/badge/platform-windows--64-orange.svg)](https://www.microsoft.com/en-us/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](https://opensource.org/license/mit)
 
 ## Overview
 
-This repository serves as a template for building projects or extensions based on Isaac Lab. It allows you to develop in an isolated environment, outside of the core Isaac Lab repository.
+This repository serves as a **ZBOT training ZOO** based on Isaac Lab. It allows you to develop in an isolated environment, outside of the core Isaac Lab repository.
 
 **Key Features:**
 
 - `Isolation` Work outside the core Isaac Lab repository, ensuring that your development efforts remain self-contained.
-- `Flexibility` This template is set up to allow your code to be run as an extension in Omniverse.
-
-**Keywords:** extension, template, isaaclab
+- `Comprehensive` This library provide both direct and manager-based workflows.
 
 ## Installation
 
-- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html). We recommend using the conda installation as it simplifies calling Python scripts from the terminal.
+- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html), [Chinese installation guide](https://docs.robotsfan.com/isaaclab/). We recommend using the conda installation as it simplifies calling Python scripts from the terminal.
 
 - Clone this repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
 
 ```bash
 # Option 1: HTTPS
-git clone https://github.com/isaac-sim/IsaacLabExtensionTemplate.git
+git clone https://github.com/crowznl/zbot_lab.git
 
 # Option 2: SSH
-git clone git@github.com:isaac-sim/IsaacLabExtensionTemplate.git
+git clone git@github.com:crowznl/zbot_lab.git
 ```
 
-- Throughout the repository, the name `zbot` only serves as an example and we provide a script to rename all the references to it automatically:
+- Using a **python interpreter that has Isaac Lab installed**, install the library
+
+This ensures that the gym.register() function is called correctly.
 
 ```bash
-# Enter the repository
-cd IsaacLabExtensionTemplate
-# Rename all occurrences of zbot (in files/directories) to your_fancy_extension_name
-python scripts/rename_template.py your_fancy_extension_name
-```
-
-- Using a python interpreter that has Isaac Lab installed, install the library
-
-```bash
+conda activate your_env
 python -m pip install -e source/zbot
+# or
+./isaaclab.sh -p -m pip install -e source/zbot
 ```
 
-- Verify that the extension is correctly installed by running the following command:
+- **Note 1:** Using scripts that matches the installed rsl_rl library version
+
+As the rsl_rl library is installed with Isaac Lab, you can find the matching version of scripts in Isaac Lab directory (e.g. `${your-path-to-isaac-lab}/scripts/.../rsl_rl`). Copy the `rsl_rl` folder to the zbot_lab's `scripts` folder，replacing the source file.
+
+In other words，if you are using a different version of isaac lab, (usually means a different version of rsl_rl), you can replace the `rsl_rl` folder in `zbot_lab/scripts` with the corresponding version of `./scripts/.../rsl_rl` from the Isaac Lab directory.
+
+- **Note 2:** Eidt the scripts, if you replace the `rsl_rl` folder following the Note 1.
+
+you need to edit the `scripts/rsl_rl/train.py`, `scripts/rsl_rl/play.py` file to import your customize tasks.
+
+```python
+# find the following code
+# import omni.isaac.lab_tasks  # noqa: F401
+# change to
+import zbot.tasks
+```
+
+- Verify that this library is correctly installed by running the following command
 
 ```bash
 python scripts/rsl_rl/train.py --task=Template-Isaac-Velocity-Rough-Anymal-D-v0
@@ -56,117 +66,11 @@ python scripts/rsl_rl/train.py --task=Template-Isaac-Velocity-Rough-Anymal-D-v0
 
 ### Set up IDE (Optional)
 
-To setup the IDE, please follow these instructions:
+To setup the IDE, please follow these [instructions](https://docs.robotsfan.com/isaaclab/source/overview/developer-guide/vs_code.html):
 
 - Run VSCode Tasks, by pressing `Ctrl+Shift+P`, selecting `Tasks: Run Task` and running the `setup_python_env` in the drop down menu. When running this task, you will be prompted to add the absolute path to your Isaac Sim installation.
 
-If everything executes correctly, it should create a file .python.env in the `.vscode` directory. The file contains the python paths to all the extensions provided by Isaac Sim and Omniverse. This helps in indexing all the python modules for intelligent suggestions while writing code.
-
-### Setup as Omniverse Extension (Optional)
-
-We provide an example UI extension that will load upon enabling your extension defined in `source/zbot/zbot/ui_extension_example.py`.
-
-To enable your extension, follow these steps:
-
-1. **Add the search path of your repository** to the extension manager:
-    - Navigate to the extension manager using `Window` -> `Extensions`.
-    - Click on the **Hamburger Icon** (☰), then go to `Settings`.
-    - In the `Extension Search Paths`, enter the absolute path to `IsaacLabExtensionTemplate/source`
-    - If not already present, in the `Extension Search Paths`, enter the path that leads to Isaac Lab's extension directory directory (`IsaacLab/source`)
-    - Click on the **Hamburger Icon** (☰), then click `Refresh`.
-
-2. **Search and enable your extension**:
-    - Find your extension under the `Third Party` category.
-    - Toggle it to enable your extension.
-
-## Docker setup
-
-### Building Isaac Lab Base Image
-
-Currently, we don't have the Docker for Isaac Lab publicly available. Hence, you'd need to build the docker image
-for Isaac Lab locally by following the steps [here](https://isaac-sim.github.io/IsaacLab/main/source/deployment/index.html).
-
-Once you have built the base Isaac Lab image, you can check it exists by doing:
-
-```bash
-docker images
-
-# Output should look something like:
-#
-# REPOSITORY                       TAG       IMAGE ID       CREATED          SIZE
-# isaac-lab-base                   latest    28be62af627e   32 minutes ago   18.9GB
-```
-
-### Building Isaac Lab Template Image
-
-Following above, you can build the docker container for this project. It is called `isaac-lab-template`. However,
-you can modify this name inside the [`docker/docker-compose.yaml`](docker/docker-compose.yaml).
-
-```bash
-cd docker
-docker compose --env-file .env.base --file docker-compose.yaml build isaac-lab-template
-```
-
-You can verify the image is built successfully using the same command as earlier:
-
-```bash
-docker images
-
-# Output should look something like:
-#
-# REPOSITORY                       TAG       IMAGE ID       CREATED             SIZE
-# isaac-lab-template               latest    00b00b647e1b   2 minutes ago       18.9GB
-# isaac-lab-base                   latest    892938acb55c   About an hour ago   18.9GB
-```
-
-### Running the container
-
-After building, the usual next step is to start the containers associated with your services. You can do this with:
-
-```bash
-docker compose --env-file .env.base --file docker-compose.yaml up
-```
-
-This will start the services defined in your `docker-compose.yaml` file, including isaac-lab-template.
-
-If you want to run it in detached mode (in the background), use:
-
-```bash
-docker compose --env-file .env.base --file docker-compose.yaml up -d
-```
-
-### Interacting with a running container
-
-If you want to run commands inside the running container, you can use the `exec` command:
-
-```bash
-docker exec --interactive --tty -e DISPLAY=${DISPLAY} isaac-lab-template /bin/bash
-```
-
-### Shutting down the container
-
-When you are done or want to stop the running containers, you can bring down the services:
-
-```bash
-docker compose --env-file .env.base --file docker-compose.yaml down
-```
-
-This stops and removes the containers, but keeps the images.
-
-## Code formatting
-
-We have a pre-commit template to automatically format your code.
-To install pre-commit:
-
-```bash
-pip install pre-commit
-```
-
-Then you can run pre-commit with:
-
-```bash
-pre-commit run --all-files
-```
+If everything executes correctly, it should create `launch.json` and `settings.json` in the `.vscode` directory. This helps in indexing all the python modules for intelligent suggestions while writing code.
 
 ## Troubleshooting
 
@@ -182,17 +86,35 @@ In some VsCode versions, the indexing of part of the extensions is missing. In t
 }
 ```
 
-### Pylance Crash
+## Acknowledgements
 
-If you encounter a crash in `pylance`, it is probable that too many files are indexed and you run out of memory.
-A possible solution is to exclude some of omniverse packages that are not used in your project.
-To do so, modify `.vscode/settings.json` and comment out packages under the key `"python.analysis.extraPaths"`
-Some examples of packages that can likely be excluded are:
+This repository is built upon the support and contributions of the following open-source projects. Special thanks to:
 
-```json
-"<path-to-isaac-sim>/extscache/omni.anim.*"         // Animation packages
-"<path-to-isaac-sim>/extscache/omni.kit.*"          // Kit UI tools
-"<path-to-isaac-sim>/extscache/omni.graph.*"        // Graph UI tools
-"<path-to-isaac-sim>/extscache/omni.services.*"     // Services tools
-...
+- [IsaacLab](https://github.com/isaac-sim/IsaacLab): The foundation for training and running codes.
+- [robot_lab](https://github.com/fan-ziqi/robot_lab): Referenced for project structure and parts of the implementation.
+- [rsl_rl](https://github.com/leggedrobotics/rsl_rl): The core library for reinforcement learning.
+- [unitree_rl_lab](https://github.com/unitreerobotics/unitree_rl_lab): Referenced for the reward function and robot actuator configuration.
+
+## Citation
+
+Please cite the following if you use this code or parts of it:
+
+```text
+@InProceedings{zhounanlin2025zbot,
+  author={Nanlin Zhou, Sikai Zhao, Hang Luo, Kai Han,  Zhiyuan Yang, Jian Qi, Ning Zhao, Jie Zhao, Yanhe Zhu},
+  booktitle={2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  title={ZBOT: A Novel Modular Robot Capable of Active Transformation from Snake to Bipedal Configuration through RL},
+  year={2025},
+  pages={7433-7439},
+  doi={XX}
+}
+```
+
+```
+@software{crowznl2025zbot_lab,
+  author = {Nanlin Zhou},
+  title = {zbot_lab: zbot training zoo based on IsaacLab.},
+  url = {https://github.com/crowznl/zbot_lab},
+  year = {2025}
+}
 ```

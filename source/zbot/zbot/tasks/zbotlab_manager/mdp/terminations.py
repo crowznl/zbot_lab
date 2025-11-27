@@ -51,3 +51,10 @@ def terrain_out_of_bounds(
         return torch.logical_or(x_out_of_bounds, y_out_of_bounds)
     else:
         raise ValueError("Received unsupported terrain type, must be either 'plane' or 'generator'.")
+
+def feet_close(env: ManagerBasedRLEnv, minimum_distance: float, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Terminate when the feet of the robot are too close"""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    feet_pos_w = asset.data.body_link_pos_w[:, asset_cfg.body_ids]
+    feet_distance = (feet_pos_w[:, 0] - feet_pos_w[:, 1]).norm(dim=-1)
+    return feet_distance < minimum_distance

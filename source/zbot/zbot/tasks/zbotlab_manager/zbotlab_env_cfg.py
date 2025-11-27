@@ -29,7 +29,7 @@ from . import mdp
 # Pre-defined configs
 ##
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
-
+from isaaclab.markers.config import RED_ARROW_X_MARKER_CFG
 
 ##
 # Scene definition
@@ -109,7 +109,10 @@ class CommandsCfg:
         ),
         limit_ranges=mdp.UniformLevelVelocityCommandCfg.Ranges(
             # lin_vel_x=(-0.5, 1.0), lin_vel_y=(-0.3, 0.3), ang_vel_z=(-0.2, 0.2)
-            lin_vel_x=(-0.4, 0.3), lin_vel_y=(-0.2, 0.2), ang_vel_z=(-0.2, 0.2)
+            lin_vel_x=(-0.3, 0.3), lin_vel_y=(0.0, 0.0), ang_vel_z=(0.0, 0.0)
+        ),
+        current_vel_visualizer_cfg = RED_ARROW_X_MARKER_CFG.replace(
+            prim_path="/Visuals/Command/velocity_current"
         ),
     )
 
@@ -278,11 +281,19 @@ class RewardsCfg:
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*"),
+            "command_name": None,
         },
     )
     foot_downward = RewTerm(
         func=mdp.foot_downward,
         weight=-1.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
+        },
+    )
+    foot_forward = RewTerm(
+        func=mdp.foot_forward,
+        weight=-0.5,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
         },
@@ -334,13 +345,18 @@ class RewardsCfg:
             "threshold": 0.3,
         },
     )
+    # air_time_variance = RewTerm(
+    #     func=mdp.air_time_variance_penalty,
+    #     weight=-1.0,
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*")},
+    # )
     air_time_variance = RewTerm(
-        func=mdp.air_time_variance_penalty,
+        func=mdp.air_time_balance_penalty,
         weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="foot.*")},
     )
     # -- other
-    base_vel_forward = RewTerm(func=mdp.base_vel_forward, weight=1.0)
+    base_vel_forward = RewTerm(func=mdp.base_vel_forward, weight=1.0, params={"which_forward": 1})
     feet_force_pattern = RewTerm(
         func=mdp.feet_force_pattern,
         weight=1.0,
@@ -372,6 +388,13 @@ class TerminationsCfg:
     base_height = DoneTerm(
         func=mdp.root_height_below_minimum, 
         params={"minimum_height": 0.2}
+    )
+    feet_close = DoneTerm(
+        func=mdp.feet_close,  # 由于脚部与地面接触，所以不方便用碰撞检测脚部过近
+        params={
+            "minimum_distance": 0.12,
+            "asset_cfg": SceneEntityCfg("robot", body_names="foot.*"),
+        },
     )
 
 
