@@ -65,7 +65,17 @@ python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2
 # python scripts/rsl_rl/play.py --task=Zbot-6b-walking-v2 --num_envs=64 --checkpoint=model_500.pt --video --video_length 500  # record video
 ```
 
-### Set up IDE (Optional)
+## Tensorboard
+
+To view tensorboard, run:
+
+```bash
+tensorboard --logdir=your_logs
+# or
+python -m tensorboard --logdir=your_logs
+```
+
+## Set up IDE (Optional)
 
 To setup the IDE, please follow these [instructions](https://docs.robotsfan.com/isaaclab/source/overview/developer-guide/vs_code.html):
 
@@ -106,8 +116,8 @@ Please cite the following if you use this code or parts of it:
   booktitle={2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
   title={ZBOT: A Novel Modular Robot Capable of Active Transformation from Snake to Bipedal Configuration through RL},
   year={2025},
-  pages={7433-7439},
-  doi={XX}
+  pages={12093-12099},
+  doi={https://doi.org/10.1109/IROS60139.2025.11246225}
 }
 ```
 
