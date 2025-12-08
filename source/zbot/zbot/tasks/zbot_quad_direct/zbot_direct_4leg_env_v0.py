@@ -3,8 +3,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# add reset_root_state_uniform function
-
 from __future__ import annotations
 
 import gymnasium as gym
@@ -20,15 +18,15 @@ from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg 
 from isaaclab.utils import configclass
 
-from zbot.assets import ZBOT_6S_CFG
+from zbot.assets import ZBOT_4L_CFG
 
 @configclass
-class ZbotDirectEnvCfgV2V1(DirectRLEnvCfg):
+class Zbot4LEnvCfg(DirectRLEnvCfg):
     # robot
-    robot: ArticulationCfg = ZBOT_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot: ArticulationCfg = ZBOT_4L_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
-        history_length=5,
+        history_length=3,
         update_period=0.0,
         track_air_time=True,
         track_pose=True,
@@ -37,10 +35,10 @@ class ZbotDirectEnvCfgV2V1(DirectRLEnvCfg):
     # env
     episode_length_s = 20.0
     decimation = 4  # 2
-    action_space = 6  #24 for sin ;  6 for pd
-    observation_space = 23
+    action_space = 12  #48 for sin ;  12 for pd
+    observation_space = 41
     state_space = 0
-    termination_height = 0.22
+    termination_height = 0.18
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -74,35 +72,41 @@ class ZbotDirectEnvCfgV2V1(DirectRLEnvCfg):
     )
     
     # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   train reward for just stepping walk base 2000 step0
+    #   train reward for lying down
+    # reward_cfg = {
+    #     "reward_scales": {
+    #         "feet_downward": -1.0,
+    #         "base_heading_x": -1.0,
+    #         "action_rate": -0.15,
+    #         "torques": -0.02,
+    #         "shape_symmetry": -1.0,
+    #         "base_height": -10.0,
+    #     },
+    # }
+
+    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    #   add reset_root_state_uniform function, thus change heading_err
     reward_cfg = {
         "reward_scales": {
-            # "base_vel_forward": 1.0,
-            "feet_downward": -1.0,
-            "feet_forward": -1.0,  # -0.5,
-            # "base_heading_x": -1.0,
-            # "base_heading_x_sum": -1.0,
-            "feet_height": 10.0,
-            "feet_gait": 2.0,
-            # "feet_force_diff": 1.0,
-            # "feet_force_sum": -0.1,
-            # "base_pos_y_err": -1.0,
-            # "feet_slide": -10.0,
-            # "feet_air_time_biped": 10.0,
-            "airtime_balance": -2.0,
-            "airtime_sum": 2.0,
-            # "action_rate": -0.1,
-            # "torques": -0.002,
+            "feet_downward": -1.1,  # -1.5 maybe 4000 iterations
+            "heading_err": -0.5,
+            "action_rate": -0.15,  # > -0.16
+            "torques": -0.02,
+            "shape_symmetry": -1.0,
+            "base_height": -10.0,
         },
     }
 
 
-class ZbotDirectEnvV2V1(DirectRLEnv):
-    cfg: ZbotDirectEnvCfgV2V1
+class Zbot4LEnv(DirectRLEnv):
+    cfg: Zbot4LEnvCfg
 
-    def __init__(self, cfg: ZbotDirectEnvCfgV2V1, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: Zbot4LEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
+        self.heading_yaw = torch.tensor([0.0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs,))
+        self.yaw_commands = self.heading_yaw.clone()  # torch.Size([4096])
+        
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(
             self.num_envs,
@@ -117,6 +121,8 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
 
         # Get specific body indices
         self._feet_ids, _ = self._contact_sensor.find_bodies("foot.*")
+        # print(self._contact_sensor.find_bodies("foot.*"))  # ([9, 10], ['foot_0', 'foot_1'])
+        # print(self._robot.find_bodies("foot.*"))  #([0, 11], ['foot_0', 'foot_1']) 是不一样的！！！
         self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies("base|a.*|b.*")
         self.base_body_idx = self._robot.find_bodies("base")[0]
         self.feet_body_idx = self._robot.find_bodies("foot.*")[0]
@@ -131,8 +137,8 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
         self.base_heading_x_sum = torch.zeros(self.num_envs, device=self.device)
         self.base_pos_y_err_sum = torch.zeros(self.num_envs, device=self.device)
 
-        # self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
-        self.joint_speed_limit = 0.2 * torch.ones((self.num_envs, 1), device=self.device)  # play
+        self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
+        # self.joint_speed_limit = 0.2 * torch.ones((self.num_envs, 1), device=self.device)  # play
 
         self.p_delta = torch.zeros_like(self._robot.data.default_joint_pos)
         self.reward_scales = cfg.reward_cfg["reward_scales"]
@@ -202,18 +208,25 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
         self._previous_actions = self._actions.clone()
 
         self.base_pos_w = self._robot.data.body_link_pos_w[:, self.base_body_idx].squeeze()
+        # print(self.base_pos_w[:2, 2])  # tensor([0.2545, 0.2545], device='cuda:0')
         self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze()
         self.feet_quat_w = self._robot.data.body_link_quat_w[:, self.feet_body_idx]
         self.feet_pos_w = self._robot.data.body_link_pos_w[:, self.feet_body_idx]
+        # print(self.feet_quat_w[0])
         # print(self.feet_pos_w[:2, :, 2])  # tensor([[0.0000e+00, 5.3035e-02],[1.8626e-09, 5.3035e-02]], device='cuda:0')
 
         axis_z = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
         # base body axis z point to world Y
         self.base_shoulder_w = math_utils.quat_apply(self.base_quat_w, axis_z)  # torch.Size([4096, 3])
         self.base_dir_forward_w = torch.cross(self._robot.data.GRAVITY_VEC_W, self.base_shoulder_w, dim=-1)  # torch.Size([4096, 3])
+        self.current_yaw = torch.atan2(self.base_dir_forward_w[:, 1], self.base_dir_forward_w[:, 0])  # torch.Size([4096])
+        # print("current_yaw", self.current_yaw[0])
+        # print("heading_yaw", self.heading_yaw[0])
+        self.heading_err = self.current_yaw - self.heading_yaw  # torch.Size([4096])
+        # print(self.heading_err[0], self.heading_err.shape)
         self.base_heading_x_err = -self.base_dir_forward_w[..., 1]  # torch.Size([4096])
         
-        self.base_lin_vel_w = self._robot.data.body_com_lin_vel_w[:, self.base_body_idx, :].squeeze()  # torch.Size([4096, 3])
+        self.base_lin_vel_w = self._robot.data.body_link_lin_vel_w[:, self.base_body_idx, :].squeeze()  # torch.Size([4096, 3])
         self.base_lin_vel_forward_w = torch.sum(self.base_lin_vel_w * self.base_dir_forward_w, dim=-1)  # 法一 torch.Size([4096])
         # self.base_lin_vel_forward_w = torch.einsum('ij,ij->i', self.base_lin_vel_w, self.base_dir_forward_w)  # 法二
         # self.base_lin_vel_forward_w = (self.base_lin_vel_w @ self.base_dir_forward_w.unsqueeze(-1)).squeeze(-1)  # 法三
@@ -248,6 +261,7 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
                     self._robot.data.joint_vel,
                     self._actions,
                     self.joint_speed_limit,
+                    # self.yaw_commands.unsqueeze(-1),
                 )
                 if tensor is not None
             ],
@@ -283,16 +297,23 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
             torch.max(
                 torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1
             )[0]
-            > 1.0,
+            > 1000.0,  # 撞击地面
             dim=1,
         )
         # print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
         # print(self.base_quat_w[:2])  # [ 0.6003, -0.6003, -0.3735, -0.3739]
-        died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)
+        # died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)
         self.base_pos_y_err = self.base_pos_w[:,1] - self._terrain.env_origins[:,1]
         # died_6 = (self.base_pos_y_err.abs() > 0.5)
-        died |= died_1
+        died_7 = (self.base_lin_vel_w[:, 2] < -0.5)
+        died_8 = torch.logical_and(
+            torch.any(self.feet_contact_forces < 1.0, dim=1),
+            (self.base_pos_w[:, 2] > 0.1),)
+        # died_8 = torch.any(self.feet_contact_forces < 1.0, dim=1)
+        # died |= died_1
         # died |= died_6
+        died |= died_7
+        died |= died_8
 
         return died, time_out
 
@@ -309,12 +330,15 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
         self._actions[env_ids] = 0.0
         self._previous_actions[env_ids] = 0.0
 
+        # Sample new yaw commands
+        # self.yaw_commands[env_ids] = torch.zeros_like(self.yaw_commands[env_ids]).uniform_(-1.0 * torch.pi, 1.0 * torch.pi)
+
         # Reset robot state
         # default_root_state = self._robot.data.default_root_state[env_ids]
         # default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         # self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         # self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        self._reset_root_state_uniform(env_ids)
+        self._reset_root_state_uniform(env_ids, self.yaw_commands)
 
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
@@ -338,7 +362,7 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
         extras = dict()
-        extras["Episode_Termination/body_contact"] = torch.count_nonzero(
+        extras["Episode_Termination/died"] = torch.count_nonzero(
             self.reset_terminated[env_ids]
         ).item()
         extras["Episode_Termination/time_out"] = torch.count_nonzero(
@@ -364,7 +388,11 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
             ),
             dim=-1,
         )
+        # print(feet_downward[0])
         return feet_downward
+
+    def _reward_heading_err(self):
+        return torch.abs(self.heading_err)
 
     def _reward_base_heading_x(self):
         return torch.abs(self.base_heading_x_err)
@@ -502,10 +530,24 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
             reward += ~(is_stance ^ is_contact[:, i])
 
         return reward
+    
+    def _reward_shape_symmetry(self):
+        jp = self.p_delta
+        symmetry_err = (
+            torch.abs(jp[:, 0] + jp[:, 5])
+            + torch.abs(jp[:, 1] + jp[:, 4])
+            + torch.abs(jp[:, 2] + jp[:, 3])
+        )
+        return symmetry_err
+    
+    def _reward_base_height(self):
+        base_height = self.base_pos_w[:, 2] - self._terrain.env_origins[:, 2] - 0.25
+        return base_height
 
     def _reset_root_state_uniform(
         self,
         env_ids: torch.Tensor,
+        yaw_commands: torch.Tensor,
         pose_range: dict[str, tuple[float, float]] = {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
         velocity_range: dict[str, tuple[float, float]] = {
             "x": (0.0, 0.0),
@@ -538,10 +580,11 @@ class ZbotDirectEnvV2V1(DirectRLEnv):
         ranges = torch.tensor(range_list, device=self.device)
         rand_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=self.device)
 
+        self.heading_yaw[env_ids] = rand_samples[:, 5] + yaw_commands[env_ids]
+
         positions = root_states[:, 0:3] + self._terrain.env_origins[env_ids] + rand_samples[:, 0:3]
         orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
         orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
-
         # orientations = math_utils.random_yaw_orientation(len(env_ids), device=self.device)  # another methods, if only random yaw
 
         # velocities
