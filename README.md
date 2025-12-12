@@ -52,7 +52,9 @@ you need to edit the `scripts/rsl_rl/train.py`, `scripts/rsl_rl/play.py` file to
 
 ```python
 # find the following code
-# import omni.isaac.lab_tasks  # noqa: F401
+# import omni.isaac.lab_tasks  # noqa: F401 
+# or 
+# import isaaclab_tasks  # noqa: F401
 # change to
 import zbot.tasks
 ```
@@ -92,7 +94,13 @@ In some VsCode versions, the indexing of part of the extensions is missing. In t
 ```json
 {
     "python.analysis.extraPaths": [
-        "<path-to-ext-repo>/source/zbot"
+        "<path-to-isaaclab>/source/isaaclab",  // e.g. "~/IsaacLab/source/isaaclab",
+        "<path-to-isaaclab>/source/isaaclab_assets",
+        "<path-to-isaaclab>/source/isaaclab_mimic",
+        "<path-to-isaaclab>/source/isaaclab_rl",
+        "<path-to-isaaclab>/source/isaaclab_tasks",
+
+        "${workspaceFolder}/source/zbot"
     ]
 }
 ```

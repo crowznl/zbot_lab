@@ -28,6 +28,7 @@ from zbot.assets import ZBOT_6S_CFG
 class ZbotDirectEnvCfgV2V2(DirectRLEnvCfg):
     # robot
     robot: ArticulationCfg = ZBOT_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    # robot: ArticulationCfg = ZBOT_6S_PD_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
         history_length=5,
@@ -75,31 +76,55 @@ class ZbotDirectEnvCfgV2V2(DirectRLEnvCfg):
         num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
     
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
     #   train reward for lying down
+    reward_cfg = {
+        "reward_scales": {
+            "feet_downward": -1.0,
+            "base_heading_x": -1.0,
+            "action_rate": -0.15,
+            # "torques": -0.02,
+            "shape_symmetry": -1.0,
+            "base_height": -10.0,
+        },
+    }
+    termination_contact_force = 1000.0
+    termination_down_velocity = -0.5
+    randomize_root = False
+
+    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    # #   add reset_root_state_uniform function, thus change heading_err
     # reward_cfg = {
     #     "reward_scales": {
-    #         "feet_downward": -1.0,
-    #         "base_heading_x": -1.0,
-    #         "action_rate": -0.15,
+    #         "feet_downward": -1.0,  #-1.0 work; -1.1(5000iterations),-1.2,-1.8,-2.0 can't down; -1.5 5000 iterations can down but like one line
+    #         "heading_err": -0.5,
+    #         "action_rate": -0.15,  # > -0.16
     #         "torques": -0.02,
     #         "shape_symmetry": -1.0,
     #         "base_height": -10.0,
     #     },
     # }
+    # termination_contact_force = 1000.0
+    # termination_down_velocity = -0.5
+    # randomize_root = True
 
     # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   add reset_root_state_uniform function, thus change heading_err
-    reward_cfg = {
-        "reward_scales": {
-            "feet_downward": -1.2,  # -1.5 maybe 4000 iterations
-            "heading_err": -0.5,
-            "action_rate": -0.15,  # > -0.16
-            "torques": -0.02,
-            "shape_symmetry": -1.0,
-            "base_height": -10.0,
-        },
-    }
+    # #   try slower
+    # reward_cfg = {
+    #     "reward_scales": {
+    #         "feet_downward": -1.0,
+    #         "heading_err": -0.5,
+    #         "action_rate": -0.15,  # > -0.16
+    #         "torques": -0.02,
+    #         # "joint_acc": -2.5e-7,
+    #         # "joint_vel": -2.5e-5,
+    #         "shape_symmetry": -1.0,
+    #         "base_height": -10.0,
+    #     },
+    # }
+    # termination_contact_force = 10.0  # can down like one line # 100.0 works
+    # termination_down_velocity = -0.3  # > -0.2
+    # randomize_root = True
 
 
 class ZbotDirectEnvV2V2(DirectRLEnv):
@@ -142,7 +167,7 @@ class ZbotDirectEnvV2V2(DirectRLEnv):
         self.base_pos_y_err_sum = torch.zeros(self.num_envs, device=self.device)
 
         self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
-        # self.joint_speed_limit = 0.2 * torch.ones((self.num_envs, 1), device=self.device)  # play
+        # self.joint_speed_limit = 1.0 * torch.ones((self.num_envs, 1), device=self.device)  # play
 
         self.p_delta = torch.zeros_like(self._robot.data.default_joint_pos)
         self.reward_scales = cfg.reward_cfg["reward_scales"]
@@ -301,7 +326,7 @@ class ZbotDirectEnvV2V2(DirectRLEnv):
             torch.max(
                 torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1
             )[0]
-            > 1000.0,  # 撞击地面
+            > self.cfg.termination_contact_force,  # 撞击地面
             dim=1,
         )
         # print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
@@ -309,7 +334,7 @@ class ZbotDirectEnvV2V2(DirectRLEnv):
         # died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)
         self.base_pos_y_err = self.base_pos_w[:,1] - self._terrain.env_origins[:,1]
         # died_6 = (self.base_pos_y_err.abs() > 0.5)
-        died_7 = (self.base_lin_vel_w[:, 2] < -0.5)
+        died_7 = (self.base_lin_vel_w[:, 2] < self.cfg.termination_down_velocity)
         died_8 = torch.logical_and(
             torch.any(self.feet_contact_forces < 1.0, dim=1),
             (self.base_pos_w[:, 2] > 0.1),)
@@ -338,11 +363,13 @@ class ZbotDirectEnvV2V2(DirectRLEnv):
         # self.yaw_commands[env_ids] = torch.zeros_like(self.yaw_commands[env_ids]).uniform_(-1.0 * torch.pi, 1.0 * torch.pi)
 
         # Reset robot state
-        # default_root_state = self._robot.data.default_root_state[env_ids]
-        # default_root_state[:, :3] += self._terrain.env_origins[env_ids]
-        # self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
-        # self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        self._reset_root_state_uniform(env_ids, self.yaw_commands)
+        if self.cfg.randomize_root:
+            self._reset_root_state_uniform(env_ids, self.yaw_commands)
+        else:
+            default_root_state = self._robot.data.default_root_state[env_ids]
+            default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+            self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
+            self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
 
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
@@ -419,13 +446,6 @@ class ZbotDirectEnvV2V2(DirectRLEnv):
         self.base_pos_y_err_sum = torch.clip(self.base_pos_y_err_sum, -1, 1)
         return torch.abs(self.base_pos_y_err_sum)
 
-    def _reward_action_rate(self):
-        # action rate
-        action_rate = torch.sum(
-            torch.square(self._actions - self._previous_actions), dim=1
-        )
-        return action_rate
-
     def _reward_step_length(self):
         # Reward z axis base linear velocity
 
@@ -492,10 +512,25 @@ class ZbotDirectEnvV2V2(DirectRLEnv):
         feet_slide = torch.sum(feet_vel.norm(dim=-1) * contacts, dim=1)
         return feet_slide
     
+    def _reward_action_rate(self):
+        # action rate
+        action_rate = torch.sum(torch.square(self._actions - self._previous_actions), dim=1)
+        return action_rate
+    
     def _reward_torques(self):
         # Penalize joint torques
         joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
         return joint_torques
+    
+    def _reward_joint_vel(self):
+        # joint velocity
+        joint_vel = torch.sum(torch.square(self._robot.data.joint_vel), dim=1)
+        return joint_vel
+
+    def _reward_joint_acc(self):
+        # joint acceleration
+        joint_accel = torch.sum(torch.square(self._robot.data.joint_acc), dim=1)
+        return joint_accel
     
     def _reward_feet_force_diff(self):
         feet_force_diff = (self.feet_contact_forces[:, 1] - self.feet_contact_forces[:, 0]) * torch.sign(self.feet_force_sum)

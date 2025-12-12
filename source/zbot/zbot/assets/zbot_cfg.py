@@ -13,7 +13,7 @@ Reference: https://github.com/crowznl
 """
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg  # DCMotorCfg
+from isaaclab.actuators import ImplicitActuatorCfg, IdealPDActuatorCfg, DCMotorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from zbot.assets import ISAACLAB_ASSETS_DATA_DIR
 
@@ -960,3 +960,75 @@ ZBOT_4L_CFG = ArticulationCfg(
         ),
     },
 )
+
+# ZBOT_6S_PD_CFG = ArticulationCfg(
+#     # prim_path="{ENV_REGEX_NS}/Robot",
+#     spawn=sim_utils.UsdFileCfg(
+#         usd_path=usd_dir_path + robot_6s_usd,
+#         activate_contact_sensors=True,  # True
+#         rigid_props=sim_utils.RigidBodyPropertiesCfg(
+#             disable_gravity=False,
+#             retain_accelerations=False,
+#             linear_damping=0.0,
+#             angular_damping=0.0,
+#             max_linear_velocity=1000.0,
+#             max_angular_velocity=1000.0,
+#             max_depenetration_velocity=1.0,
+#         ),
+#         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+#             enabled_self_collisions=True,
+#             solver_position_iteration_count=8,
+#             solver_velocity_iteration_count=4,
+#         ),
+#     ),
+#     init_state=ArticulationCfg.InitialStateCfg(
+#         pos=(0.0, -0.06, 0.0),
+#         rot=(1.0, 0.0, 0.0, 0.0),
+#         joint_pos={
+#             "joint1": 0.312,
+#             "joint2": 0.837,
+#             "joint3": -2.02,
+#             "joint4": 2.02,
+#             "joint5": -0.837,
+#             "joint6": -0.312,
+#         },
+#         joint_vel={
+#             "joint[1-6]": 0.0,
+#         },
+#     ),
+#     soft_joint_pos_limit_factor=1.0,
+#     # actuators={
+#     #     "zbot_six": ImplicitActuatorCfg(
+#     #         # joint_names_expr=[".*joint"],
+#     #         joint_names_expr=["joint.*"],
+#     #         effort_limit=20,
+#     #         velocity_limit=20,
+#     #         stiffness=50.0,  # kp
+#     #         damping=5.0,  # kd
+#     #         # stiffness=500.0,  # kp
+#     #         # damping=50.0,  # kd
+#     #         friction=0.0,
+#     #     ),
+#     # },
+#     # actuators={
+#     #     "PD": IdealPDActuatorCfg(  # not work
+#     #         joint_names_expr=["joint.*"],
+#     #         effort_limit=3.0,
+#     #         # velocity_limit=20.0,
+#     #         stiffness=50.0,
+#     #         damping=5.0,
+#     #         friction=0.0,
+#     #     ),
+#     # },
+#     actuators={
+#         "DC": DCMotorCfg(  # not work
+#             joint_names_expr=["joint.*"],
+#             effort_limit=5.0,  # Continuous torque
+#             saturation_effort=14.0,  # Stall torque
+#             velocity_limit=20.0,  # No-load speed
+#             stiffness=20.0,
+#             damping=2.0,
+#             friction=0.0,
+#         ),
+#     },
+# )

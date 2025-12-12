@@ -364,7 +364,7 @@ class ZbotDirectEnvV2(DirectRLEnv):
             dim=-1,
         )
         # print(obs.shape)  # torch.Size([num_envs, 23])
-        self.save_tensor_to_csv(obs, csv_file_path="logs/csv/obs_env0.csv")
+        # self.save_tensor_to_csv(obs, csv_file_path="logs/csv/obs_env0.csv")
         observations = {"policy": obs}
         return observations
 

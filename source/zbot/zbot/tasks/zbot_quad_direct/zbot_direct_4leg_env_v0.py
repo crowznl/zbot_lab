@@ -70,21 +70,8 @@ class Zbot4LEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
         num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
-    
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   train reward for lying down
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "feet_downward": -1.0,
-    #         "base_heading_x": -1.0,
-    #         "action_rate": -0.15,
-    #         "torques": -0.02,
-    #         "shape_symmetry": -1.0,
-    #         "base_height": -10.0,
-    #     },
-    # }
 
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
     #   add reset_root_state_uniform function, thus change heading_err
     reward_cfg = {
         "reward_scales": {
@@ -126,19 +113,17 @@ class Zbot4LEnv(DirectRLEnv):
         self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies("base|a.*|b.*")
         self.base_body_idx = self._robot.find_bodies("base")[0]
         self.feet_body_idx = self._robot.find_bodies("foot.*")[0]
-        self.feet_contact_forces_last = torch.zeros(
-            (self.num_envs, 2), device=self.device, dtype=torch.float
-        )
 
-        self.feet_down_pos_last = torch.zeros((self.num_envs, 2, 3), device=self.device)
-        self.feet_step_length = torch.zeros((self.num_envs, 2), device=self.device)
-        self.feet_air_times = torch.zeros((self.num_envs, 2), device=self.device)
+        self.feet_contact_forces_last = torch.zeros((self.num_envs, 4), device=self.device)
+        self.feet_down_pos_last = torch.zeros((self.num_envs, 4, 3), device=self.device)
+        self.feet_step_length = torch.zeros((self.num_envs, 4), device=self.device)
+        self.feet_air_times = torch.zeros((self.num_envs, 4), device=self.device)
         self.feet_force_sum = torch.zeros(self.num_envs, device=self.device)
         self.base_heading_x_sum = torch.zeros(self.num_envs, device=self.device)
         self.base_pos_y_err_sum = torch.zeros(self.num_envs, device=self.device)
 
-        self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
-        # self.joint_speed_limit = 0.2 * torch.ones((self.num_envs, 1), device=self.device)  # play
+        # self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
+        self.joint_speed_limit = 1.0 * torch.pi * torch.ones((self.num_envs, 1), device=self.device)
 
         self.p_delta = torch.zeros_like(self._robot.data.default_joint_pos)
         self.reward_scales = cfg.reward_cfg["reward_scales"]
@@ -175,8 +160,7 @@ class Zbot4LEnv(DirectRLEnv):
         # #mode 1
         self._actions = torch.tanh(actions.clone())
         self.p_delta[:] += (
-            torch.pi
-            * self._actions
+            self._actions
             * self.joint_speed_limit
             * self.step_dt
         )
@@ -231,7 +215,7 @@ class Zbot4LEnv(DirectRLEnv):
         # self.base_lin_vel_forward_w = torch.einsum('ij,ij->i', self.base_lin_vel_w, self.base_dir_forward_w)  # 法二
         # self.base_lin_vel_forward_w = (self.base_lin_vel_w @ self.base_dir_forward_w.unsqueeze(-1)).squeeze(-1)  # 法三
 
-        self.z_w = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 2, 1))  # torch.Size([4096, 2, 3])
+        self.z_w = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 4, 1))  # torch.Size([4096, 4, 3])
         # axis_x_feet = torch.tensor(
         #     [[1, 0, 0], [-0.7071, 0.0, -0.7071]], device=self.sim.device, dtype=torch.float32
         # ).repeat((self.num_envs, 1, 1))
@@ -240,12 +224,12 @@ class Zbot4LEnv(DirectRLEnv):
         # ).repeat((self.num_envs, 1, 1))
         axis_x_feet = torch.tensor(
             [1, 0, 0], device=self.sim.device, dtype=torch.float32
-        ).repeat((self.num_envs, 2, 1))
+        ).repeat((self.num_envs, 4, 1))
         axis_z_feet = torch.tensor(
-            [[0, 0, 1], [0, 0, -1]], device=self.sim.device, dtype=torch.float32
+            [[0, 0, 1], [0, 0, -1], [0, 0, 1], [0, 0, -1]], device=self.sim.device, dtype=torch.float32
         ).repeat((self.num_envs, 1, 1))
-        self.feet_z_w = math_utils.quat_apply(self.feet_quat_w, axis_z_feet)  # torch.Size([4096, 2, 3])
-        self.feet_x_w = math_utils.quat_apply(self.feet_quat_w, axis_x_feet)  # torch.Size([4096, 2, 3])
+        self.feet_z_w = math_utils.quat_apply(self.feet_quat_w, axis_z_feet)  # torch.Size([4096, 4, 3])
+        self.feet_x_w = math_utils.quat_apply(self.feet_quat_w, axis_x_feet)  # torch.Size([4096, 4, 3])
         # print(self.feet_z_w[0])
         # print(self.feet_x_w[0])
         # ----------------------------------------------------------------------关键是目前usd的feet1坐标系不在底面
