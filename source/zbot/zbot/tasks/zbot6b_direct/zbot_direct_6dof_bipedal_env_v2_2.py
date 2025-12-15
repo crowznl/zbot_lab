@@ -23,6 +23,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 
 from zbot.assets import ZBOT_6S_CFG
+# from zbot.assets import ZBOT_6S_PD_CFG  # test actuator
 
 @configclass
 class ZbotDirectEnvCfgV2V2(DirectRLEnvCfg):
@@ -76,21 +77,21 @@ class ZbotDirectEnvCfgV2V2(DirectRLEnvCfg):
         num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
     
-    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   train reward for lying down
-    reward_cfg = {
-        "reward_scales": {
-            "feet_downward": -1.0,
-            "base_heading_x": -1.0,
-            "action_rate": -0.15,
-            # "torques": -0.02,
-            "shape_symmetry": -1.0,
-            "base_height": -10.0,
-        },
-    }
-    termination_contact_force = 1000.0
-    termination_down_velocity = -0.5
-    randomize_root = False
+    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    # #   train reward for lying down
+    # reward_cfg = {
+    #     "reward_scales": {
+    #         "feet_downward": -1.0,
+    #         "base_heading_x": -1.0,
+    #         "action_rate": -0.15,
+    #         "torques": -0.02,
+    #         "shape_symmetry": -1.0,
+    #         "base_height": -10.0,
+    #     },
+    # }
+    # termination_contact_force = 1000.0
+    # termination_down_velocity = -0.5
+    # randomize_root = False
 
     # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
     # #   add reset_root_state_uniform function, thus change heading_err
@@ -108,23 +109,23 @@ class ZbotDirectEnvCfgV2V2(DirectRLEnvCfg):
     # termination_down_velocity = -0.5
     # randomize_root = True
 
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # #   try slower
-    # reward_cfg = {
-    #     "reward_scales": {
-    #         "feet_downward": -1.0,
-    #         "heading_err": -0.5,
-    #         "action_rate": -0.15,  # > -0.16
-    #         "torques": -0.02,
-    #         # "joint_acc": -2.5e-7,
-    #         # "joint_vel": -2.5e-5,
-    #         "shape_symmetry": -1.0,
-    #         "base_height": -10.0,
-    #     },
-    # }
-    # termination_contact_force = 10.0  # can down like one line # 100.0 works
-    # termination_down_velocity = -0.3  # > -0.2
-    # randomize_root = True
+    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    #   try slower
+    reward_cfg = {
+        "reward_scales": {
+            "feet_downward": -1.0,
+            "heading_err": -0.5,
+            "action_rate": -0.15,  # > -0.16
+            "torques": -0.02,
+            # "joint_acc": -2.5e-7,
+            # "joint_vel": -2.5e-5,
+            "shape_symmetry": -1.0,
+            "base_height": -10.0,
+        },
+    }
+    termination_contact_force = 10.0  # can down like one line # 100.0 works
+    termination_down_velocity = -0.3  # > -0.2
+    randomize_root = True
 
 
 class ZbotDirectEnvV2V2(DirectRLEnv):

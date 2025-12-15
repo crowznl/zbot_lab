@@ -977,8 +977,10 @@ ZBOT_4L_CFG = ArticulationCfg(
 #         ),
 #         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
 #             enabled_self_collisions=True,
-#             solver_position_iteration_count=8,
-#             solver_velocity_iteration_count=4,
+#             solver_position_iteration_count=4,
+#             solver_velocity_iteration_count=0,
+#             # solver_position_iteration_count=8,
+#             # solver_velocity_iteration_count=4,
 #         ),
 #     ),
 #     init_state=ArticulationCfg.InitialStateCfg(
@@ -1011,17 +1013,17 @@ ZBOT_4L_CFG = ArticulationCfg(
 #     #     ),
 #     # },
 #     # actuators={
-#     #     "PD": IdealPDActuatorCfg(  # not work
+#     #     "PD": IdealPDActuatorCfg(  # not work # 尝试改回solver_position_iteration_count也不好使
 #     #         joint_names_expr=["joint.*"],
 #     #         effort_limit=3.0,
-#     #         # velocity_limit=20.0,
+#     #         velocity_limit=20.0,
 #     #         stiffness=50.0,
 #     #         damping=5.0,
 #     #         friction=0.0,
 #     #     ),
 #     # },
 #     actuators={
-#         "DC": DCMotorCfg(  # not work
+#         "DC": DCMotorCfg(  # not work # 尝试改回solver_position_iteration_count也不好使
 #             joint_names_expr=["joint.*"],
 #             effort_limit=5.0,  # Continuous torque
 #             saturation_effort=14.0,  # Stall torque
