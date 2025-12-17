@@ -18,8 +18,8 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from unitree_rl_lab.assets.robots.unitree import UNITREE_GO2_CFG as ROBOT_CFG
-from unitree_rl_lab.tasks.locomotion import mdp
+from zbot.assets.unitree_assets.unitree import UNITREE_GO2_CFG as ROBOT_CFG
+from unitree_rl_lab import mdp
 
 COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
