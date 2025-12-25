@@ -38,6 +38,9 @@ conda activate your_env
 python -m pip install -e source/zbot
 # or
 ./isaaclab.sh -p -m pip install -e source/zbot
+
+# after that, you can find it by:
+pip list -e
 ```
 
 - **Note 1:** Using scripts that matches the installed rsl_rl library version
@@ -64,7 +67,7 @@ import zbot.tasks
 ```bash
 python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2
 # python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2 --num_envs 4096 --headless --max_iterations 2000 --resume --load_run=2025-11-04_13-15-04
-# python scripts/rsl_rl/play.py --task=Zbot-6b-walking-v2 --num_envs=64 --checkpoint=model_500.pt --video --video_length 500  # record video
+# python scripts/rsl_rl/play.py --task=zbot-6b-walking-v2 --num_envs=64 --checkpoint=model_500.pt --video --video_length 500  # record video
 ```
 
 ## Tensorboard
@@ -72,9 +75,9 @@ python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2
 To view tensorboard, run:
 
 ```bash
-tensorboard --logdir=your_logs
+tensorboard --logdir=<your_logs>  # .e.g ${workspaceFolder}/logs/rsl_rl/<your-experiment-name>/
 # or
-python -m tensorboard --logdir=your_logs
+python -m tensorboard --logdir=<your_logs>
 ```
 
 ## Set up IDE (Optional)

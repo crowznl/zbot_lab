@@ -3,7 +3,24 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Episode_Termination/time_out: 在异步重置机制下，单帧的 time_out 计数失去了表征“存活率”的意义
+# obs修改：相对角度指令commands[1]改为显示的heading_err，否则网络难以学习！！！
+
+# 训练过程中动态重采样命令（Command Resampling）,不仅仅在reset时发生，通过EventManager实现随机时间间隔改变指令
+
+# [physics stepping(apply action)] > _get_dones() > _get_rewards() > _reset_idx()(S + event"reset") > event"interval" > _get_observations()
+# 之前想过在_compute_intermediate_values()里通过resample标志位（env_ids）来更新target_heading_yaw，但_compute是在_get_dones()开头被调用的，而_get_dones()又在apply action后被调用，
+# 那显然不能用已经动过的current_yaw再去计算target，要么在event"interval"之后_get_observations()开头再次调用_compute，但是很多计算不必要。所以确实有必要维护一个全局变量，
+# 那么与其在调用resample_commands时记录current_yaw，不如直接在其中算出target_heading_yaw
+
+# [域随机化]
+# [EN] https://isaac-sim.github.io/IsaacLab/main/source/tutorials/03_envs/create_direct_rl_env.html#domain-randomization
+# [ZH] https://docs.robotsfan.com/isaaclab/source/tutorials/03_envs/create_direct_rl_env.html#domain-randomization
+# you can find it in local document also. '~/IsaacLab/docs/source/tutorials/03_envs/create_direct_rl_env.rst'
+# In the direct workflow, domain randomization configuration uses the configclass module to specify a configuration class consisting of EventTermCfg variables.
+# 我第一次是在'~/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/anymal_c/anymal_c_env_cfg.py'看到这个用法的，发现direct workflow居然也设计提供了event manager。
+
+# maker visualization
+# 参考manager based workflow的command相关配置，set_debug_vis，_set_debug_vis_impl，_debug_vis_callback，主要还是direct workflow也提供了待实现的相关接口。
 
 from __future__ import annotations
 
@@ -11,6 +28,13 @@ import gymnasium as gym
 import torch
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
+
+import isaaclab.envs.mdp as mdp
+from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.markers import VisualizationMarkers
+from isaaclab.markers import VisualizationMarkersCfg
+from isaaclab.markers.config import RED_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 
 from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
@@ -22,13 +46,167 @@ from isaaclab.utils import configclass
 
 from zbot.assets import ZBOT_4L_CFG
 
+def reset_root_state_uniform(
+    env: Zbot4LEnvV1,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    velocity_range: dict[str, tuple[float, float]],
+):
+    """Reset the asset root state to a random position and velocity uniformly within the given ranges.
+
+    This function randomizes the root position and velocity of the asset.
+
+    * It samples the root position from the given ranges and adds them to the default root position, before setting
+      them into the physics simulation.
+    * It samples the root orientation from the given ranges and sets them into the physics simulation.
+    * It samples the root velocity from the given ranges and sets them into the physics simulation.
+
+    The function takes a dictionary of pose and velocity ranges for each axis and rotation. The keys of the
+    dictionary are ``x``, ``y``, ``z``, ``roll``, ``pitch``, and ``yaw``. The values are tuples of the form
+    ``(min, max)``. If the dictionary does not contain a key, the position or velocity is set to zero for that axis.
+    """
+
+    # get default root state
+    root_states = env._robot.data.default_root_state[env_ids].clone()
+
+    # poses
+    range_list = [pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+    ranges = torch.tensor(range_list, device=env.device)
+    rand_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=env.device)
+
+    # default_root_state的yaw通常是0，如果不是，需要加上default_yaw = math_utils.euler_xyz_from_quat(root_states[:, 3:7])[2]
+    env.current_yaw[env_ids] = rand_samples[:, 5]
+
+    positions = root_states[:, 0:3] + env.scene.env_origins[env_ids] + rand_samples[:, 0:3]
+    orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
+    orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
+    # orientations = math_utils.random_yaw_orientation(len(env_ids), device=env.device)  # another methods, if only random yaw
+
+    # velocities
+    range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+    ranges = torch.tensor(range_list, device=env.device)
+    rand_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=env.device)
+
+    velocities = root_states[:, 7:13] + rand_samples
+
+    # set into the physics simulation
+    env._robot.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=env_ids)
+    env._robot.write_root_velocity_to_sim(velocities, env_ids=env_ids)
+
+# --- Command Resampling (供 EventManager 调用) ---
+def resample_commands(env: Zbot4LEnvV1, env_ids: torch.Tensor, velocity_range: tuple[float, float], yaw_range: tuple[float, float]):
+    """Resample velocity and yaw commands."""
+
+    # 1. Linear Velocity X (0.1 ~ 0.6 m/s)
+    low, high = velocity_range
+    env.commands[env_ids, 0] = torch.rand(len(env_ids), device=env.device) * (high - low) + low
+    
+    # 2. Relative Yaw Command (-Pi ~ Pi)
+    # 这是相对于当前朝向的目标偏角
+    low, high = yaw_range
+    env.commands[env_ids, 1] = torch.rand(len(env_ids), device=env.device) * (high - low) + low
+    
+    env.target_heading_yaw[env_ids] = math_utils.wrap_to_pi(env.current_yaw[env_ids] + env.commands[env_ids, 1])
+
+
 @configclass
-class Zbot4LEnvCfg(DirectRLEnvCfg):
+class EventCfg:
+    """Configuration for randomization."""
+
+    # startup
+    # physics_material = EventTerm(
+    #     func=mdp.randomize_rigid_body_material,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+    #         # "static_friction_range": (0.8, 0.8),
+    #         # "dynamic_friction_range": (0.6, 0.6),
+    #         "static_friction_range": (0.6, 1.0),
+    #         "dynamic_friction_range": (0.6, 1.0),
+    #         "restitution_range": (0.0, 0.0),
+    #         "num_buckets": 64,
+    #     },
+    # )
+
+    # add_base_mass = EventTerm(
+    #     func=mdp.randomize_rigid_body_mass,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+    #         "mass_distribution_params": (-0.5, 1.0),
+    #         "operation": "add",
+    #     },
+    # )
+
+    # reset
+    # base_external_force_torque = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+    #         "force_range": (0.0, 0.0),
+    #         "torque_range": (-0.0, 0.0),
+    #     },
+    # )
+
+    reset_base = EventTerm(
+        # func=mdp.reset_root_state_uniform,  # 由于需要更新current_yaw，自己实现了类似功能
+        func=reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "velocity_range": {  # default + range
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+        },
+    )
+
+    # 1. Reset: 环境重置时生成新指令
+    reset_command_resample = EventTerm(
+        func=resample_commands,
+        mode="reset",
+        params={
+            # "velocity_range": (0.4, 0.6),
+            "velocity_range": (0.3, 0.5),
+            "yaw_range": (-0.2, 0.2), # Reset初期给一个小一点的角度，容易起步
+        },
+    )
+
+    # interval
+    # 2. Interval: 每隔一段时间改变指令
+    interval_command_resample = EventTerm(
+        func=resample_commands,
+        mode="interval",
+        interval_range_s=(3.0, 6.0),  # 每 3~6 秒变一次指令
+        params={
+            # "velocity_range": (0.4, 0.6),  # -ln(1.595/2)*4= 0.057 m/s
+            "velocity_range": (0.3, 0.5),  # -ln(1.74/2)*4= 0.035 m/s
+            # "yaw_range": (-0.5, 0.5),  # OK: 0.974, -ln(0.97)*4*180/pi= 0.38 deg
+            # "yaw_range": (-1.0, 1.0),  # OK: 0.921, -ln(0.92)*4*180/pi= 1.19 deg
+            "yaw_range": (-0.8, 0.8),  # OK: 0.939, -ln(0.94)*4*180/pi= 0.90 deg
+        },
+    )
+
+    # push_robot = EventTerm(
+    #     func=mdp.push_by_setting_velocity,
+    #     mode="interval",
+    #     interval_range_s=(10.0, 15.0),
+    #     params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    # )
+
+
+@configclass
+class Zbot4LEnvV1Cfg(DirectRLEnvCfg):
     # env
     episode_length_s = 20.0
     decimation = 4  # 2
     action_space = 12  #48 for sin ;  12 for pd
-    observation_space = 41
+    observation_space = 42
     state_space = 0
 
     # simulation
@@ -62,6 +240,44 @@ class Zbot4LEnvCfg(DirectRLEnvCfg):
         num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
 
+    # commands makers
+    # debug_vis=True  # play
+    debug_vis=False  # train
+
+    goal_vel_visualizer_cfg: VisualizationMarkersCfg = GREEN_ARROW_X_MARKER_CFG.replace(
+        prim_path="/Visuals/Command/heading_velocity_goal"
+    )
+    """The configuration for the goal velocity visualization marker. Defaults to GREEN_ARROW_X_MARKER_CFG."""
+    current_vel_visualizer_cfg: VisualizationMarkersCfg = RED_ARROW_X_MARKER_CFG.replace(
+        prim_path="/Visuals/Command/heading_velocity_current"
+    )
+    """The configuration for the current velocity visualization marker. Defaults to RED_ARROW_X_MARKER_CFG."""
+    # Set the scale of the visualization markers to (0.5, 0.5, 0.5)
+    arrow_scale = (0.5, 0.5, 0.5)
+    goal_vel_visualizer_cfg.markers["arrow"].scale = arrow_scale
+    current_vel_visualizer_cfg.markers["arrow"].scale = arrow_scale
+
+    # events
+    events: EventCfg = EventCfg()
+
+    # [动作和观测噪声]
+    # [EN] https://isaac-sim.github.io/IsaacLab/main/source/tutorials/03_envs/create_direct_rl_env.html#action-and-observation-noise
+    # [ZH] https://docs.robotsfan.com/isaaclab/source/tutorials/03_envs/create_direct_rl_env.html#action-and-observation-noise
+    # you can find it in local document also. '~/IsaacLab/docs/source/tutorials/03_envs/create_direct_rl_env.rst'
+
+    # from isaaclab.utils.noise import GaussianNoiseCfg, NoiseModelWithAdditiveBiasCfg
+    # # at every time-step add gaussian noise + bias. The bias is a gaussian sampled at reset
+    # action_noise_model: NoiseModelWithAdditiveBiasCfg = NoiseModelWithAdditiveBiasCfg(
+    # noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.05, operation="add"),
+    # bias_noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.015, operation="abs"),
+    # )
+    # # at every time-step add gaussian noise + bias. The bias is a gaussian sampled at reset
+    # observation_noise_model: NoiseModelWithAdditiveBiasCfg = NoiseModelWithAdditiveBiasCfg(
+    # noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.002, operation="add"),
+    # bias_noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.0001, operation="abs"),
+    # )
+    # # If only per-step noise is desired, GaussianNoiseCfg can be used.
+
     # robot
     robot: ArticulationCfg = ZBOT_4L_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
@@ -76,27 +292,35 @@ class Zbot4LEnvCfg(DirectRLEnvCfg):
     # #   working
     # reward_cfg = {
     #     "reward_scales": {
-    #         "base_vel_forward": 1.0,
-    #         "heading_err": -1.0,
+    #         # --- Tracking ---
+    #         "track_lin_vel_x": 2.0,
+    #         "track_heading_yaw": 1.0,
+
+    #         # --- Penalties ---
+    #         # "lin_vel_y": -1.0,         # 侧向漂移惩罚
 
     #         "action_rate": -0.1,
     #         "torques": -2e-4,
     #         "joint_vel": -0.001,
     #         "joint_acc": -2.5e-7,
-    #         "flat_orientation_l2": -2.5,
+    #         # "flat_orientation_l2": -2.5,
     #         "feet_downward": -1.0,
 
-    #         "feet_air_time": 1.0,  # 0.1,
-    #         "airtime_variance": -1.0,
-    #         "feet_slide": -1.0  # -0.1,
+    #         # "feet_air_time": 1.0,  # threshold = 0.5
+    #         # "airtime_variance": -1.0,
+    #         # "feet_slide": -1.0,
     #     },
     # }
     # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    #   add feet_gait reward 发现没什么效果，理论上4*0.5=2.0，目前只能达到1.0左右，说明步态并未按照规则进行。
+    #   working
     reward_cfg = {
         "reward_scales": {
-            "base_vel_forward": 1.0,
-            "heading_err": -1.0,
+            # --- Tracking ---
+            "track_lin_vel_x": 2.0,
+            "track_heading_yaw": 1.0,
+
+            # --- Penalties ---
+            "lin_vel_y": -1.0,         # 侧向漂移惩罚
 
             "action_rate": -0.1,
             "torques": -2e-4,
@@ -105,22 +329,30 @@ class Zbot4LEnvCfg(DirectRLEnvCfg):
             "flat_orientation_l2": -2.5,
             "feet_downward": -1.0,
 
-            "feet_air_time": 1.0,
-            "airtime_variance": -1.0,
-            "feet_gait": 0.5,  # period=1.2's mean_rew: 1.04，  # 0.6 less than 1.0，  # 0.8 less than 1.0,  # 1.0's mean_rew: 1.1,  # 2.0's mean_rew: 1.04
+            # "feet_air_time": 1.0,  # threshold = 0.5
+            # "airtime_variance": -1.0,
             "feet_slide": -1.0,
         },
     }
 
 
-class Zbot4LEnv(DirectRLEnv):
-    cfg: Zbot4LEnvCfg
+class Zbot4LEnvV1(DirectRLEnv):
+    cfg: Zbot4LEnvV1Cfg
 
-    def __init__(self, cfg: Zbot4LEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: Zbot4LEnvV1Cfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        self.heading_yaw = torch.tensor([0.0], dtype=torch.float32, device=self.sim.device).repeat((self.num_envs,))
-        self.yaw_commands = self.heading_yaw.clone()  # torch.Size([4096])
+        # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
+        # self._debug_vis_handle = None  # already defined in super().__init__()
+        # set initial state of debug visualization
+        self.base_lin_vel_forward_w = torch.zeros(self.num_envs, device=self.device) # 不定义的话会有warning
+        self.set_debug_vis(self.cfg.debug_vis)
+
+        # Commands: [target_vel_x, target_yaw_relative]
+        self.commands = torch.zeros(self.num_envs, 2, device=self.device)
+        # 记录resample_commands时的目标朝向 (World Frame)
+        self.current_yaw = torch.zeros(self.num_envs, device=self.device)
+        self.target_heading_yaw = torch.zeros(self.num_envs, device=self.device)
         
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(
@@ -134,8 +366,8 @@ class Zbot4LEnv(DirectRLEnv):
             device=self.device,
         )
         self.p_delta = torch.zeros_like(self._robot.data.default_joint_pos)
-        self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
-        # self.joint_speed_limit = 1.0 * torch.pi * torch.ones((self.num_envs, 1), device=self.device)  # play
+        # self.joint_speed_limit = 0.2 + 1.8 * torch.rand(self.num_envs, 1, device=self.device)
+        self.joint_speed_limit = 1.0 * torch.ones((self.num_envs, 1), device=self.device)  # 固定为1.0，不再作为obs
 
         # Get specific body indices
         self._feet_ids, _ = self._contact_sensor.find_bodies("foot.*")
@@ -240,14 +472,14 @@ class Zbot4LEnv(DirectRLEnv):
 
         # self.current_yaw = math_utils.euler_xyz_from_quat(self.base_quat_w)[2]  # 目前没有提供四元数单独获取yaw的函数，反而计算量更大
         self.current_yaw = torch.atan2(self.base_dir_forward_w[:, 1], self.base_dir_forward_w[:, 0])  # torch.Size([4096])
-        # print(self.current_yaw[0], self.heading_yaw[0])
+        # print(self.current_yaw[0], self.target_heading_yaw[0])
         # tensor(-3.1367, device='cuda:0') tensor(-2.9934, device='cuda:0')
         # tensor(3.1384, device='cuda:0') tensor(-2.9934, device='cuda:0') # 可能跳变！
         # tensor(0.0782, device='cuda:0') tensor(0.0782, device='cuda:0')
 
-        # self.heading_err = self.current_yaw - self.heading_yaw  # torch.Size([4096])
+        # self.heading_err = self.target_heading_yaw - self.current_yaw  # torch.Size([4096])
         # Wrap heading error to [-pi, pi] to avoid sudden ±π jumps when crossing the -π/π boundary.
-        diff = self.current_yaw - self.heading_yaw
+        diff = self.target_heading_yaw - self.current_yaw
         self.heading_err = torch.atan2(torch.sin(diff), torch.cos(diff))
         # self.heading_err = torch.remainder(diff + torch.pi, 2 * torch.pi) - torch.pi  # 法二
 
@@ -265,17 +497,25 @@ class Zbot4LEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         self._previous_actions = self._actions.clone()
 
-        self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze()  # reset后，可能需要更新下缓存，要不就直接获取
+        # reset\event后，可能需要更新下缓存，
+        self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze()  # 要不就直接root_quat获取
+        diff = self.target_heading_yaw - self.current_yaw
+        self.heading_err = torch.atan2(torch.sin(diff), torch.cos(diff))
+        # 神经网络算不过来：网络需要自己学会 Target_Yaw = Quat_to_Yaw(base_quat) + command_yaw，
+        # 然后还要计算 Error = Target_Yaw - Current_Yaw。这对一个简单的 MLP 网络来说太难了，尤其是四元数是非线性的。
         obs = torch.cat(
             [
                 tensor
                 for tensor in (
-                    self.base_quat_w,
+                    self.base_quat_w,  # 注意s2r时，IMU配置初始值修改
+                    # self._robot.data.projected_gravity_b,
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                     self._robot.data.joint_vel,
                     self._actions,
-                    self.joint_speed_limit,
-                    # self.yaw_commands.unsqueeze(-1),
+                    # self.joint_speed_limit,  # 固定为1.0，即1.0 * torch.pi
+                    # self.commands, # [vel_x, yaw_relative]
+                    self.commands[:, 0:1],  # vel_x
+                    self.heading_err.unsqueeze(-1),
                 )
                 if tensor is not None
             ],
@@ -313,8 +553,8 @@ class Zbot4LEnv(DirectRLEnv):
         )
         # died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)
         # died |= died_1
-        died_2 = (self.heading_err.abs() > 0.5 * torch.pi)
-        died |= died_2
+        # died_2 = (self.heading_err.abs() > 0.5 * torch.pi)
+        # died |= died_2
 
         return died, time_out
 
@@ -332,7 +572,7 @@ class Zbot4LEnv(DirectRLEnv):
         self._previous_actions[env_ids] = 0.0
         self.p_delta[env_ids] = 0.0
 
-        # Sample new yaw commands
+        # Sample new yaw commands # 不用显示地更新了，super()._reset_idx(env_ids) calls EventManager (which calls resample_commands)
         # self.yaw_commands[env_ids] = torch.zeros_like(self.yaw_commands[env_ids]).uniform_(-1.0 * torch.pi, 1.0 * torch.pi)
 
         # Reset robot state
@@ -340,7 +580,9 @@ class Zbot4LEnv(DirectRLEnv):
         # default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         # self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         # self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        self._reset_root_state_uniform(env_ids, self.yaw_commands)
+        
+        # Randomize Root State & Refresh Current Yaw
+        # self._reset_root_state_uniform(env_ids)  # 也挪到event里了，并在resample_commands之前
 
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
@@ -379,6 +621,22 @@ class Zbot4LEnv(DirectRLEnv):
         # 因此，关注它，不如关注OnpolicyRunner log的平均回合长度mean_episode_length！它越接近max_episode_length，说明训练得好。
         self.extras["log"].update(extras)
 
+    def _reward_track_lin_vel_x(self):
+        # Tracking Linear Velocity X
+        lin_vel_error = torch.square(self.commands[:, 0] - self.base_lin_vel_forward_w)
+        return torch.exp(-lin_vel_error / 0.25)
+
+    def _reward_track_heading_yaw(self):
+        # Tracking Heading (Relative)
+        # heading_err is computed in _compute_intermediate_values
+        return torch.exp(-torch.square(self.heading_err) / 0.25)
+
+    def _reward_lin_vel_y(self):
+        # Penalize lateral velocity (Drift)
+        # Compute velocity in base frame Y direction
+        vel_y = torch.sum(self.base_lin_vel_w * self.base_shoulder_w, dim=-1)
+        return torch.square(vel_y)
+    
     # def _reward_feet_forward(self):
     #     feet_x_w = math_utils.quat_apply(self.feet_quat_w, self.axis_x_feet)  # torch.Size([4096, 4, 3])
     #     # print(feet_x_w[0])
@@ -403,17 +661,17 @@ class Zbot4LEnv(DirectRLEnv):
         )
         return feet_downward
 
-    def _reward_heading_err(self):
-        return torch.abs(self.heading_err)
+    # def _reward_heading_err(self):
+    #     return torch.abs(self.heading_err)
 
-    def _reward_heading_err_sum(self):
-        self.heading_err_sum += 0.01 * self.heading_err
-        self.heading_err_sum = torch.clamp(self.heading_err_sum, -0.5*torch.pi, 0.5*torch.pi)
-        return torch.abs(self.heading_err_sum)
+    # def _reward_heading_err_sum(self):
+    #     self.heading_err_sum += 0.01 * self.heading_err
+    #     self.heading_err_sum = torch.clamp(self.heading_err_sum, -0.5*torch.pi, 0.5*torch.pi)
+    #     return torch.abs(self.heading_err_sum)
 
-    def _reward_base_vel_forward(self):
-        base_vel_forward = torch.tanh(10.0 * self.base_lin_vel_forward_w / self.joint_speed_limit.squeeze())
-        return base_vel_forward
+    # def _reward_base_vel_forward(self):
+    #     base_vel_forward = torch.tanh(10.0 * self.base_lin_vel_forward_w / self.joint_speed_limit.squeeze())
+    #     return base_vel_forward
 
     def _reward_step_length(self):
         # Reward z axis base linear velocity
@@ -472,22 +730,6 @@ class Zbot4LEnv(DirectRLEnv):
         # reward *= torch.norm(self._command[:, :2], dim=1) > 0.1
         return reward
 
-    def _reward_feet_air_time_biped(self):
-        """Reward long steps taken by the feet for bipeds.
-
-        This function rewards the agent for taking steps up to a specified threshold and also keep one foot at
-        a time in the air.
-        """
-        # compute the reward
-        air_time = self._contact_sensor.data.current_air_time[:, self._feet_ids]
-        contact_time = self._contact_sensor.data.current_contact_time[:, self._feet_ids]
-        in_contact = contact_time > 0.0
-        in_mode_time = torch.where(in_contact, contact_time, air_time)
-        single_stance = torch.sum(in_contact.int(), dim=1) == 1
-        reward = torch.min(torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1)[0]
-        reward = torch.clamp(reward, max=2.0)
-        return reward
-
     def _reward_feet_slide(self):
         """Penalize feet sliding.
 
@@ -529,7 +771,7 @@ class Zbot4LEnv(DirectRLEnv):
     
     def _reward_feet_gait(
         self,
-        period: float = 1.2,
+        period: float = 1.0,
         offset: list[float] = [0.0, 0.5, 0.0, 0.5],  # 脚部ID顺序是[FL, RL, RR, FR]（左前，左后Rear，右后，右前）
         threshold: float = 0.55,
     ):
@@ -547,9 +789,10 @@ class Zbot4LEnv(DirectRLEnv):
             is_stance = leg_phase[:, i] < threshold
             reward += ~(is_stance ^ is_contact[:, i])
         
-        if self.common_step_counter % 800 == 0:
-            print(f"is_stanced: {leg_phase[:2] < threshold}")
-            print(f"is_contact: {is_contact[:2]}")
+        # logging
+        # if self.common_step_counter % 800 == 0:
+        #     print(f"is_stanced: {leg_phase[:2] < threshold}")
+        #     print(f"is_contact: {is_contact[:2]}")
         
         return reward
     
@@ -564,57 +807,70 @@ class Zbot4LEnv(DirectRLEnv):
         """
         return torch.sum(torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1)
 
-    def _reset_root_state_uniform(
-        self,
-        env_ids: torch.Tensor,
-        yaw_commands: torch.Tensor,
-        pose_range: dict[str, tuple[float, float]] = {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-        velocity_range: dict[str, tuple[float, float]] = {
-            "x": (0.0, 0.0),
-            "y": (0.0, 0.0),
-            "z": (0.0, 0.0),
-            "roll": (0.0, 0.0),
-            "pitch": (0.0, 0.0),
-            "yaw": (0.0, 0.0),
-        },
-    ):
-        """Reset the asset root state to a random position and velocity uniformly within the given ranges.
+    ################################################################################
+    # Debug Visualization
+    ################################################################################
 
-        This function randomizes the root position and velocity of the asset.
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        # set visibility of markers
+        # note: parent only deals with callbacks. not their visibility
+        if debug_vis:
+            # create markers if necessary for the first time
+            if not hasattr(self, "goal_vel_visualizer"):
+                # -- goal
+                self.goal_vel_visualizer = VisualizationMarkers(self.cfg.goal_vel_visualizer_cfg)
+                # -- current
+                self.current_vel_visualizer = VisualizationMarkers(self.cfg.current_vel_visualizer_cfg)
+            # set their visibility to true
+            self.goal_vel_visualizer.set_visibility(True)
+            self.current_vel_visualizer.set_visibility(True)
+        else:
+            if hasattr(self, "goal_vel_visualizer"):
+                self.goal_vel_visualizer.set_visibility(False)
+                self.current_vel_visualizer.set_visibility(False)
 
-        * It samples the root position from the given ranges and adds them to the default root position, before setting
-        them into the physics simulation.
-        * It samples the root orientation from the given ranges and sets them into the physics simulation.
-        * It samples the root velocity from the given ranges and sets them into the physics simulation.
+    def _debug_vis_callback(self, event):
+        # check if robot is initialized
+        # note: this is needed in-case the robot is de-initialized. we can't access the data
+        if not self._robot.is_initialized:
+            return
+        # get marker location
+        # -- base state
+        base_pos_w = self._robot.data.root_pos_w.clone()
+        base_pos_w[:, 2] += 0.5
+        # -- resolve the scales and quaternions
+        vel_des_arrow_scale = torch.tensor(self.cfg.arrow_scale, device=self.device).repeat(self.num_envs, 1)
+        vel_des_arrow_scale[:, 0] *= self.commands[:, 0] * 5.0
+        vel_arrow_scale = torch.tensor([self.cfg.arrow_scale[0], self.cfg.arrow_scale[1]*2, self.cfg.arrow_scale[2]*2], 
+                                       device=self.device).repeat(self.num_envs, 1)
+        vel_arrow_scale[:, 0] *= self.base_lin_vel_forward_w * 5.0
+        zeros = torch.zeros_like(self.target_heading_yaw)
+        vel_des_arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, self.target_heading_yaw)
+        vel_arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, self.current_yaw)
+        # vel_des_arrow_scale, vel_des_arrow_quat = self._resolve_xy_velocity_to_arrow(self.command[:, :2])
+        # vel_arrow_scale, vel_arrow_quat = self._resolve_xy_velocity_to_arrow(self._robot.data.root_lin_vel_b[:, :2])
+        # display markers
+        self.goal_vel_visualizer.visualize(base_pos_w, vel_des_arrow_quat, vel_des_arrow_scale)
+        self.current_vel_visualizer.visualize(base_pos_w, vel_arrow_quat, vel_arrow_scale)
 
-        The function takes a dictionary of pose and velocity ranges for each axis and rotation. The keys of the
-        dictionary are ``x``, ``y``, ``z``, ``roll``, ``pitch``, and ``yaw``. The values are tuples of the form
-        ``(min, max)``. If the dictionary does not contain a key, the position or velocity is set to zero for that axis.
-        """
+    """
+    Internal helpers.
+    """
 
-        # get default root state
-        root_states = self._robot.data.default_root_state[env_ids].clone()
+    # def _resolve_xy_velocity_to_arrow(self, xy_velocity: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    #     """Converts the XY base velocity command to arrow direction rotation."""
+    #     # obtain default scale of the marker
+    #     default_scale = self.goal_vel_visualizer.cfg.markers["arrow"].scale
+    #     # arrow-scale
+    #     arrow_scale = torch.tensor(default_scale, device=self.device).repeat(xy_velocity.shape[0], 1)
+    #     arrow_scale[:, 0] *= torch.linalg.norm(xy_velocity, dim=1) * 3.0
+    #     # arrow-direction
+    #     heading_angle = torch.atan2(xy_velocity[:, 1], xy_velocity[:, 0])
+    #     zeros = torch.zeros_like(heading_angle)
+    #     arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, heading_angle)
+    #     # convert everything back from base to world frame
+    #     base_quat_w = self._robot.data.root_quat_w
+    #     arrow_quat = math_utils.quat_mul(base_quat_w, arrow_quat)
 
-        # poses
-        range_list = [pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
-        ranges = torch.tensor(range_list, device=self.device)
-        rand_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=self.device)
-
-        self.heading_yaw[env_ids] = rand_samples[:, 5] + yaw_commands[env_ids]
-
-        positions = root_states[:, 0:3] + self._terrain.env_origins[env_ids] + rand_samples[:, 0:3]
-        orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
-        orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
-        # orientations = math_utils.random_yaw_orientation(len(env_ids), device=self.device)  # another methods, if only random yaw
-
-        # velocities
-        range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
-        ranges = torch.tensor(range_list, device=self.device)
-        rand_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=self.device)
-
-        velocities = root_states[:, 7:13] + rand_samples
-
-        # set into the physics simulation
-        self._robot.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=env_ids)
-        self._robot.write_root_velocity_to_sim(velocities, env_ids=env_ids)
+    #     return arrow_scale, arrow_quat
 
