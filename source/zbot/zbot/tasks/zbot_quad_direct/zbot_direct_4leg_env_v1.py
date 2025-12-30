@@ -12,6 +12,8 @@
 # 那显然不能用已经动过的current_yaw再去计算target，要么在event"interval"之后_get_observations()开头再次调用_compute，但是很多计算不必要。所以确实有必要维护一个全局变量，
 # 那么与其在调用resample_commands时记录current_yaw，不如直接在其中算出target_heading_yaw
 
+# 又去看了下官方文档，发现完善了很多内容，一些需要自己摸索的现在都有说明了，真的是常看常新！！！
+
 # [域随机化]
 # [EN] https://isaac-sim.github.io/IsaacLab/main/source/tutorials/03_envs/create_direct_rl_env.html#domain-randomization
 # [ZH] https://docs.robotsfan.com/isaaclab/source/tutorials/03_envs/create_direct_rl_env.html#domain-randomization
@@ -19,8 +21,26 @@
 # In the direct workflow, domain randomization configuration uses the configclass module to specify a configuration class consisting of EventTermCfg variables.
 # 我第一次是在'~/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/anymal_c/anymal_c_env_cfg.py'看到这个用法的，发现direct workflow居然也设计提供了event manager。
 
+# [动作和观测噪声]
+# [EN] https://isaac-sim.github.io/IsaacLab/main/source/tutorials/03_envs/create_direct_rl_env.html#action-and-observation-noise
+# [ZH] https://docs.robotsfan.com/isaaclab/source/tutorials/03_envs/create_direct_rl_env.html#action-and-observation-noise
+# you can find it in local document also. '~/IsaacLab/docs/source/tutorials/03_envs/create_direct_rl_env.rst'
+
 # maker visualization
 # 参考manager based workflow的command相关配置，set_debug_vis，_set_debug_vis_impl，_debug_vis_callback，主要还是direct workflow也提供了待实现的相关接口。
+# [EN] https://isaac-sim.github.io/IsaacLab/main/source/setup/walkthrough/training_jetbot_gt.html 
+# [ZH] https://docs.robotsfan.com/isaaclab/source/setup/walkthrough/training_jetbot_gt.html
+# [EN] https://isaac-sim.github.io/IsaacLab/main/source/how-to/draw_markers.html 
+# [ZH] https://docs.robotsfan.com/isaaclab/source/how-to/draw_markers.html
+# 这里也讲解了更详细的VisualizationMarkers用法。
+
+# 为了速度指令既有正负值，绝对值又不会太小（>0.3），即避免在均匀采样如[-0.5, 0.5]时采样到大量接近0的指令，
+# 修改resample_commands函数的逻辑：将 velocity_range 解释为速度的绝对值范围（大小），然后随机赋予正负号。
+
+# 在Direct Workflow(DirectRLEnv)中实现课程学习Curriculum Learning，
+# 随着tracking reward的提升，逐步扩大reset_command_resample.params["velocity_range"]的范围。
+# 由于没有command_manager和curriculum_manager，还是借助event_manager实现。
+# 但是这么说的话，DirectRLEnv又提供了self.common_step_counter  # for curriculum generation
 
 from __future__ import annotations
 
@@ -97,9 +117,12 @@ def reset_root_state_uniform(
 def resample_commands(env: Zbot4LEnvV1, env_ids: torch.Tensor, velocity_range: tuple[float, float], yaw_range: tuple[float, float]):
     """Resample velocity and yaw commands."""
 
-    # 1. Linear Velocity X (0.1 ~ 0.6 m/s)
+    # 1. Linear Velocity X (+- m/s)
     low, high = velocity_range
-    env.commands[env_ids, 0] = torch.rand(len(env_ids), device=env.device) * (high - low) + low
+    # env.commands[env_ids, 0] = torch.rand(len(env_ids), device=env.device) * (high - low) + low
+    # 随机生成符号 {-1, 1}
+    vel_sign = torch.randint(0, 2, (len(env_ids),), device=env.device) * 2.0 - 1.0
+    env.commands[env_ids, 0] = (torch.rand(len(env_ids), device=env.device) * (high - low) + low) * vel_sign
     
     # 2. Relative Yaw Command (-Pi ~ Pi)
     # 这是相对于当前朝向的目标偏角
@@ -108,6 +131,33 @@ def resample_commands(env: Zbot4LEnvV1, env_ids: torch.Tensor, velocity_range: t
     
     env.target_heading_yaw[env_ids] = math_utils.wrap_to_pi(env.current_yaw[env_ids] + env.commands[env_ids, 1])
 
+def vel_range_curriculum(
+    env: Zbot4LEnvV1,
+    env_ids: torch.Tensor,
+    reward_term_name: str = "track_lin_vel_x",
+    limit_ranges: tuple[float, float] = (0.0, 1.0),
+) -> torch.Tensor:
+
+    reward = torch.mean(env._episode_sums[reward_term_name][env_ids]) / env.max_episode_length_s
+
+    if env.common_step_counter % env.max_episode_length == 0:
+        if reward > env.reward_scales[reward_term_name] * 0.8:
+
+            reset_term = env.cfg.events.reset_command_resample
+            interval_term = env.cfg.events.interval_command_resample
+            current_range = reset_term.params["velocity_range"]
+
+            delta_range = torch.tensor([-0.1, 0.05], device=env.device)
+            new_range = torch.clamp(
+                torch.tensor(current_range, device=env.device) + delta_range,
+                limit_ranges[0],
+                limit_ranges[1],
+            ).tolist()
+
+            reset_term.params["velocity_range"] = tuple(new_range)
+            interval_term.params["velocity_range"] = tuple(new_range)
+            # 如果把velocity_range定义为list，应直接params["velocity_range"]=torch.clamp(...).tolist()，
+            # 而避免中间变量，导致引用断裂。不过这里根据建议，还是保持使用tuple
 
 @configclass
 class EventCfg:
@@ -139,6 +189,10 @@ class EventCfg:
     # )
 
     # reset
+    vel_range = EventTerm(
+        func=vel_range_curriculum,
+        mode="reset",
+    )
     # base_external_force_torque = EventTerm(
     #     func=mdp.apply_external_force_torque,
     #     mode="reset",
@@ -172,7 +226,13 @@ class EventCfg:
         mode="reset",
         params={
             # "velocity_range": (0.4, 0.6),
-            "velocity_range": (0.3, 0.5),
+            # "velocity_range": (0.3, 0.5),
+            # "velocity_range": (0.1, 0.5),
+            # "velocity_range": (-0.3, 0.5),
+            # "velocity_range": (-0.5, 0.5),
+            # "velocity_range": (-0.8, 0.8),
+            # "velocity_range": (0.3, 0.5),
+            "velocity_range": (0.2, 0.5),
             "yaw_range": (-0.2, 0.2), # Reset初期给一个小一点的角度，容易起步
         },
     )
@@ -185,7 +245,13 @@ class EventCfg:
         interval_range_s=(3.0, 6.0),  # 每 3~6 秒变一次指令
         params={
             # "velocity_range": (0.4, 0.6),  # -ln(1.595/2)*4= 0.057 m/s
-            "velocity_range": (0.3, 0.5),  # -ln(1.74/2)*4= 0.035 m/s
+            # "velocity_range": (0.3, 0.5),  # -ln(1.74/2)*4= 0.035 m/s
+            # "velocity_range": (0.1, 0.5),  # not move
+            # "velocity_range": (-0.3, 0.5),  # 还可行
+            # "velocity_range": (-0.5, 0.5),  # not move
+            # "velocity_range": (-0.8, 0.8),  # not move
+            # "velocity_range": (0.3, 0.5),  # not so good in 2000 iter # resample_commands先采样大小，再随机正负
+            "velocity_range": (0.2, 0.5),  # 还行 in 5000 or 8000 iter
             # "yaw_range": (-0.5, 0.5),  # OK: 0.974, -ln(0.97)*4*180/pi= 0.38 deg
             # "yaw_range": (-1.0, 1.0),  # OK: 0.921, -ln(0.92)*4*180/pi= 1.19 deg
             "yaw_range": (-0.8, 0.8),  # OK: 0.939, -ln(0.94)*4*180/pi= 0.90 deg
@@ -241,8 +307,8 @@ class Zbot4LEnvV1Cfg(DirectRLEnvCfg):
     )
 
     # commands makers
-    # debug_vis=True  # play
     debug_vis=False  # train
+    # debug_vis=True  # play
 
     goal_vel_visualizer_cfg: VisualizationMarkersCfg = GREEN_ARROW_X_MARKER_CFG.replace(
         prim_path="/Visuals/Command/heading_velocity_goal"
@@ -306,7 +372,7 @@ class Zbot4LEnvV1Cfg(DirectRLEnvCfg):
     #         # "flat_orientation_l2": -2.5,
     #         "feet_downward": -1.0,
 
-    #         # "feet_air_time": 1.0,  # threshold = 0.5
+    #         # "feet_air_time": 1.0,
     #         # "airtime_variance": -1.0,
     #         # "feet_slide": -1.0,
     #     },
@@ -329,8 +395,8 @@ class Zbot4LEnvV1Cfg(DirectRLEnvCfg):
             "flat_orientation_l2": -2.5,
             "feet_downward": -1.0,
 
-            # "feet_air_time": 1.0,  # threshold = 0.5
-            # "airtime_variance": -1.0,
+            "feet_air_time": 1.0,  # threshold = 0.2
+            "airtime_variance": -1.0,
             "feet_slide": -1.0,
         },
     }
@@ -394,7 +460,7 @@ class Zbot4LEnvV1(DirectRLEnv):
         # prepare reward functions and multiply reward scales by dt
         self.reward_functions, self._episode_sums = dict(), dict()
         for name in self.reward_scales.keys():
-            self.reward_scales[name] *= self.step_dt
+            # self.reward_scales[name] *= self.step_dt  # 改到_get_rewards()中计算, 更直观
             self.reward_functions[name] = getattr(self, "_reward_" + name)
 
             # Logging
@@ -453,8 +519,8 @@ class Zbot4LEnvV1(DirectRLEnv):
         self._robot.set_joint_position_target(self._processed_actions)
 
     def _compute_intermediate_values(self):
-        self.base_pos_w = self._robot.data.body_link_pos_w[:, self.base_body_idx].squeeze()
-        self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze()
+        self.base_pos_w = self._robot.data.body_link_pos_w[:, self.base_body_idx].squeeze(1)
+        self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze(1)
         self.feet_quat_w = self._robot.data.body_link_quat_w[:, self.feet_body_idx]
         self.feet_pos_w = self._robot.data.body_link_pos_w[:, self.feet_body_idx]
         # print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
@@ -498,9 +564,10 @@ class Zbot4LEnvV1(DirectRLEnv):
         self._previous_actions = self._actions.clone()
 
         # reset\event后，可能需要更新下缓存，
-        self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze()  # 要不就直接root_quat获取
+        self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze(1)  # 要不就直接root_quat获取
         diff = self.target_heading_yaw - self.current_yaw
         self.heading_err = torch.atan2(torch.sin(diff), torch.cos(diff))
+        # print(self.heading_err.shape)  # torch.Size([4096])
         # 神经网络算不过来：网络需要自己学会 Target_Yaw = Quat_to_Yaw(base_quat) + command_yaw，
         # 然后还要计算 Error = Target_Yaw - Current_Yaw。这对一个简单的 MLP 网络来说太难了，尤其是四元数是非线性的。
         obs = torch.cat(
@@ -529,7 +596,7 @@ class Zbot4LEnvV1(DirectRLEnv):
         # compute reward
         reward = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         for name, reward_func in self.reward_functions.items():
-            rew = reward_func() * self.reward_scales[name]
+            rew = reward_func() * self.reward_scales[name] * self.step_dt
             reward += rew
             self._episode_sums[name] += rew
         
@@ -619,6 +686,9 @@ class Zbot4LEnvV1(DirectRLEnv):
         # 在这种异步重置机制下，单帧的 time_out 计数确实失去了表征“存活率”的意义，
         # 稳定在大约 num_envs / max_episode_length 个环境（.e.g 4096/1000 = 4.1）。
         # 因此，关注它，不如关注OnpolicyRunner log的平均回合长度mean_episode_length！它越接近max_episode_length，说明训练得好。
+        if self.cfg.events.reset_command_resample is not None:
+            extras["Curriculum/vel_lower_bound"] = self.cfg.events.reset_command_resample.params["velocity_range"][0]
+        
         self.extras["log"].update(extras)
 
     def _reward_track_lin_vel_x(self):
@@ -721,7 +791,7 @@ class Zbot4LEnvV1(DirectRLEnv):
 
         If the commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
         """
-        threshold = 0.5
+        threshold = 0.2
         # compute the reward
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids]
         last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids]
