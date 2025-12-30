@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# not good env version, do not use
+
 from __future__ import annotations
 
 import gymnasium as gym

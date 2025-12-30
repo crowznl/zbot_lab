@@ -10,6 +10,7 @@ from .zbot_direct_6dof_bipedal_env_v2_1 import ZbotDirectEnvCfgV2V1, ZbotDirectE
 from .zbot_direct_6dof_bipedal_env_v2_2 import ZbotDirectEnvCfgV2V2, ZbotDirectEnvV2V2  # lay down policy
 from .zbot_direct_6dof_bipedal_env_v3 import ZbotDirectEnvCfgV3, ZbotDirectEnvV3  # add node module
 from .zbot_direct_12dof_bipedal_env import Zbot12BEnvCfg, Zbot12BEnv  # 12 dof
+from .zbot_direct_6dof_bipedal_env_v4 import Zbot6SEnvV4Cfg, Zbot6SEnvV4  # modify reward and termination
 
 ##
 # Register Gym environments.
@@ -82,5 +83,15 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": Zbot12BEnvCfg,
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfgV4",
+    },
+)
+
+gym.register(
+    id="zbot-6b-walking-v4",
+    entry_point="zbot.tasks.zbot6b_direct:Zbot6SEnvV4",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": Zbot6SEnvV4Cfg,
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Zbot6SEnvV4PPOCfg",
     },
 )
