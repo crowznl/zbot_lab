@@ -1,9 +1,9 @@
 """
-此脚本演示了使用键盘交互式控制 Zbot 四足机器人。
+此脚本演示了使用键盘交互式控制 Zbot 双足机器人。
 需先加载 Isaac Sim。
 
 用法:
-    ./isaaclab.sh -p scripts/play_zbot_keyboard.py
+    ./isaaclab.sh -p scripts/play_zbot_6b_keyboard.py
 """
 
 # 参考 https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/input-devices/keyboard.html
@@ -36,7 +36,7 @@ import carb
 import omni
 # import gymnasium as gym
 
-from zbot.tasks.zbot_quad_direct.zbot_direct_4leg_env_v1 import Zbot4LEnvV1, Zbot4LEnvV1Cfg
+from zbot.tasks.zbot6b_direct.zbot_direct_6dof_bipedal_env_v4 import Zbot6SEnvV4, Zbot6SEnvV4Cfg
 
 class ZbotKeyboardController:
     """
@@ -45,7 +45,7 @@ class ZbotKeyboardController:
 
     def __init__(self):
         # 1. 配置环境
-        env_cfg = Zbot4LEnvV1Cfg()
+        env_cfg = Zbot6SEnvV4Cfg()
         env_cfg.scene.num_envs = 1
         env_cfg.episode_length_s = 100000.0  # 延长回合时间
         env_cfg.debug_vis = True  # 开启可视化箭头
@@ -57,12 +57,12 @@ class ZbotKeyboardController:
         env_cfg.events.interval_command_resample = None
         
         # 3. 创建环境
-        self.env = Zbot4LEnvV1(cfg=env_cfg, render_mode="rgb_array")
+        self.env = Zbot6SEnvV4(cfg=env_cfg, render_mode="rgb_array")
         self.device = self.env.device
 
         # 4. 加载策略
         # 路径指向你提供的 exported policy.pt
-        policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_quad_flat_direct_v1/2026-01-08_14-15-22limit0.6/exported/policy.pt"
+        policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-04_15-55-45/exported/policy.pt"
         print(f"Loading policy from: {policy_path}")
         try:
             self.policy = torch.jit.load(policy_path, map_location=self.device)

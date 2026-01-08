@@ -42,6 +42,11 @@
 # 由于没有command_manager和curriculum_manager，还是借助event_manager实现。
 # 但是这么说的话，DirectRLEnv又提供了self.common_step_counter  # for curriculum generation
 
+# [同步修改260106] 在source/zbot/zbot/tasks/zbot6b_direct/zbot_direct_6dof_bipedal_env_v4.py训练过程中发现了一个非常微妙但致命的问题。
+# 简单来说：之前的课程学习中修改 env.cfg.events.reset_command_resample 这个配置对象没有用，原因在于Python 对象引用和 @configclass 装饰器的行为机制，
+# EventManager(事件管理器)在初始化时会读取配置，并将其转化为内部的列表 _mode_term_cfgs。
+# 通过 env.cfg.events... 访问到的配置对象，与 EventManager 内部持有的对象不是同一个实例。
+
 from __future__ import annotations
 
 import gymnasium as gym
@@ -134,8 +139,8 @@ def resample_commands(env: Zbot4LEnvV1, env_ids: torch.Tensor, velocity_range: t
 def vel_range_curriculum(
     env: Zbot4LEnvV1,
     env_ids: torch.Tensor,
+    limit_ranges: tuple[float, float],
     reward_term_name: str = "track_lin_vel_x",
-    limit_ranges: tuple[float, float] = (0.0, 1.0),
 ) -> torch.Tensor:
 
     reward = torch.mean(env._episode_sums[reward_term_name][env_ids]) / env.max_episode_length_s
@@ -143,10 +148,14 @@ def vel_range_curriculum(
     if env.common_step_counter % env.max_episode_length == 0:
         if reward > env.reward_scales[reward_term_name] * 0.8:
 
-            reset_term = env.cfg.events.reset_command_resample
-            interval_term = env.cfg.events.interval_command_resample
-            current_range = reset_term.params["velocity_range"]
+            # reset_term = env.cfg.events.reset_command_resample
+            # interval_term = env.cfg.events.interval_command_resample
+            # 错误的方法，你会发现log的参数变了但实际resample command时的range还是初始范围
+            # [Fix] Obtain the actual configuration object used by the EventManager.
+            reset_term = env.event_manager.get_term_cfg("reset_command_resample")
+            interval_term = env.event_manager.get_term_cfg("interval_command_resample")
 
+            current_range = reset_term.params["velocity_range"]
             delta_range = torch.tensor([-0.1, 0.05], device=env.device)
             new_range = torch.clamp(
                 torch.tensor(current_range, device=env.device) + delta_range,
@@ -192,6 +201,13 @@ class EventCfg:
     vel_range = EventTerm(
         func=vel_range_curriculum,
         mode="reset",
+        params={
+            # "limit_ranges": (0.0, 1.0),
+            # "limit_ranges": (0.0, 0.8),  # ^
+            # "limit_ranges": (0.0, 0.7),  # ^
+            "limit_ranges": (0.0, 0.6),  # ^
+            "reward_term_name": "track_lin_vel_x",
+        },
     )
     # base_external_force_torque = EventTerm(
     #     func=mdp.apply_external_force_torque,
@@ -227,6 +243,7 @@ class EventCfg:
         params={
             # "velocity_range": (0.4, 0.6),
             # "velocity_range": (0.3, 0.5),
+            # ============================================================
             # "velocity_range": (0.1, 0.5),
             # "velocity_range": (-0.3, 0.5),
             # "velocity_range": (-0.5, 0.5),
@@ -244,17 +261,18 @@ class EventCfg:
         mode="interval",
         interval_range_s=(3.0, 6.0),  # 每 3~6 秒变一次指令
         params={
-            # "velocity_range": (0.4, 0.6),  # -ln(1.595/2)*4= 0.057 m/s
-            # "velocity_range": (0.3, 0.5),  # -ln(1.74/2)*4= 0.035 m/s
+            # "velocity_range": (0.4, 0.6),  # sqrt(-ln(1.595/2)*0.25)= 0.238 m/s
+            # "velocity_range": (0.3, 0.5),  # sqrt(-ln(1.74/2)*0.25)= 0.1866 m/s
+            # ==============后续依次探究："yaw_range"的影响、增加reward种类、尝试正反双向运动================
             # "velocity_range": (0.1, 0.5),  # not move
             # "velocity_range": (-0.3, 0.5),  # 还可行
             # "velocity_range": (-0.5, 0.5),  # not move
             # "velocity_range": (-0.8, 0.8),  # not move
             # "velocity_range": (0.3, 0.5),  # not so good in 2000 iter # resample_commands先采样大小，再随机正负
             "velocity_range": (0.2, 0.5),  # 还行 in 5000 or 8000 iter
-            # "yaw_range": (-0.5, 0.5),  # OK: 0.974, -ln(0.97)*4*180/pi= 0.38 deg
-            # "yaw_range": (-1.0, 1.0),  # OK: 0.921, -ln(0.92)*4*180/pi= 1.19 deg
-            "yaw_range": (-0.8, 0.8),  # OK: 0.939, -ln(0.94)*4*180/pi= 0.90 deg
+            # "yaw_range": (-0.5, 0.5),  # OK: 0.974, sqrt(-ln(0.97)*0.25)*180/pi= 4.65 deg
+            # "yaw_range": (-1.0, 1.0),  # OK: 0.921, sqrt(-ln(0.92)*0.25)*180/pi= 8.27 deg
+            "yaw_range": (-0.8, 0.8),  # OK: 0.939, sqrt(-ln(0.94)*0.25)*180/pi= 7.13 deg
         },
     )
 
@@ -686,8 +704,14 @@ class Zbot4LEnvV1(DirectRLEnv):
         # 在这种异步重置机制下，单帧的 time_out 计数确实失去了表征“存活率”的意义，
         # 稳定在大约 num_envs / max_episode_length 个环境（.e.g 4096/1000 = 4.1）。
         # 因此，关注它，不如关注OnpolicyRunner log的平均回合长度mean_episode_length！它越接近max_episode_length，说明训练得好。
+
         if self.cfg.events.reset_command_resample is not None:
-            extras["Curriculum/vel_lower_bound"] = self.cfg.events.reset_command_resample.params["velocity_range"][0]
+            # extras["Curriculum/vel_lower_bound"] = self.cfg.events.reset_command_resample.params["velocity_range"][0]
+            # 因为range_curriculum修复后逻辑变了，所以这里也从EventManager里取
+            # [Fix] Log the ACTUAL active parameters from EventManager, not the static self.cfg
+            reset_term_cfg = self.event_manager.get_term_cfg("reset_command_resample")
+            extras["Curriculum/vel_lower_bound"] = reset_term_cfg.params["velocity_range"][0]
+            extras["Curriculum/vel_upper_bound"] = reset_term_cfg.params["velocity_range"][1]
         
         self.extras["log"].update(extras)
 

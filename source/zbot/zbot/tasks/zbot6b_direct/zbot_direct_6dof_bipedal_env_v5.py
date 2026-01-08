@@ -3,28 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# 尝试正反对称的初始构型
+
 # obs修改：相对角度指令commands[1]改为显示的heading_err，否则网络难以学习！！！
-# 参考zbot_quad_direct/zbot_direct_4leg_env_v1.py
 
 # 修改_rew_step_length，适应正反行走
-
-# 控制台/TensorBoard的信息是在on_policy_runner.py的log方法中实现的，一定要意识到它记录的是统计平均值！！！
-# 每次iteration，计算num_steps_per_env（i.e. 24）个steps的平均值。
-# 收集阶段：OnPolicyRunner 会运行 num_steps_per_env 步（比如 24 步）。
-# 累积：在这 24 步的过程中，extras["log"]都会被收集到 ep_infos 列表中。
-# 平均：log 函数执行 value = torch.mean(infotensor)。
-# 因此，在课程学习（Curriculum Learning）中，最好也使用滑动平均(Rolling Average)缓冲区来计算奖励的平均值，而不是某一帧的数据，避免过早提升难度。
-
-# 将日志记录逻辑移到 _reset_idx 的最前面，并使用episode_length_buf计算实际时长，进而计算单位时间内奖励的平均。
-
-# DirectRLEnv.step()遵循较新的Gymnasium接口，返回5个值 (obs, rewards, terminated, truncated, extras)，
-# 而OnPolicyRunner期望的env.step()返回4个值 (obs, rewards, dones, extras)，这是通过包装器(Wrapper)实现的。
-# env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)  # wrap around environment for rsl-rl
-
-# 一个非常微妙但致命的问题。原因在于Python 对象引用和 @configclass 装饰器的行为机制。
-# 简单来说：修改 env.cfg.events.reset_command_resample 这个配置对象没有用，
-# EventManager(事件管理器)在初始化时会读取配置，并将其转化为内部的列表 _mode_term_cfgs。
-# 通过 env.cfg.events... 访问到的配置对象，与 EventManager 内部持有的对象不是同一个实例。
 
 from __future__ import annotations
 
@@ -49,10 +32,10 @@ from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg 
 from isaaclab.utils import configclass
 
-from zbot.assets import ZBOT_6S_CFG
+from zbot.assets import ZBOT_6S_CFG_1
 
 def reset_root_state_uniform(
-    env: Zbot6SEnvV4,
+    env: Zbot6SEnvV5,
     env_ids: torch.Tensor,
     pose_range: dict[str, tuple[float, float]],
     velocity_range: dict[str, tuple[float, float]],
@@ -100,7 +83,7 @@ def reset_root_state_uniform(
 
 # --- Command Resampling (供 EventManager 调用) ---
 def resample_commands(
-        env: Zbot6SEnvV4, 
+        env: Zbot6SEnvV5, 
         env_ids: torch.Tensor, 
         velocity_range: tuple[float, float], 
         yaw_range: tuple[float, float],
@@ -127,7 +110,7 @@ def resample_commands(
     env.target_heading_yaw[env_ids] = math_utils.wrap_to_pi(env.current_yaw[env_ids] + env.commands[env_ids, 1])
 
 def range_curriculum(
-    env: Zbot6SEnvV4,
+    env: Zbot6SEnvV5,
     env_ids: torch.Tensor,
     # reward_term_name: str = "track_lin_vel_x",
     limit_ranges: tuple[float, float] = (0.0, 0.5),
@@ -138,15 +121,8 @@ def range_curriculum(
         return
     
     # if (env.common_step_counter > 24 * 1000) & (env.common_step_counter % env.max_episode_length == 0):
-    # if env.common_step_counter % (env.max_episode_length * 6) == 0:  # per 250 episodes
-    if env.common_step_counter % (env.max_episode_length * 24) == 0:  # per 1000 episodes
+    if env.common_step_counter % (env.max_episode_length * 6) == 0:  # per 250 episodes
 
-        # reset_term = env.cfg.events.reset_command_resample
-        # interval_term = env.cfg.events.interval_command_resample
-        # print(env.commands)
-        # 错误的方法，你会发现log的参数变了但实际resample command时的range还是初始范围
-        # [Fix] Obtain the actual configuration object used by the EventManager.
-        # Accessing env.cfg.events directly might return a different instance or copy.
         reset_term = env.event_manager.get_term_cfg("reset_command_resample")
         interval_term = env.event_manager.get_term_cfg("interval_command_resample")
 
@@ -234,40 +210,7 @@ class EventCfg:
         },
     )
     
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # vel_range = None
-
-    # # 1. Reset: 环境重置时生成新指令
-    # reset_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="reset",
-    #     params={
-    #         "velocity_range": (0.3, 0.3),
-    #         # "velocity_range": (0.2, 0.4),
-    #         "yaw_range": (-0.0, 0.0),
-    #         # "yaw_range": (-0.1, 0.1),
-    #         # "yaw_range": (-0.2, 0.2),  # not good
-    #         "dual_sign": False,
-    #     },
-    # )
-
-    # # interval
-    # # 2. Interval: 每隔一段时间改变指令
-    # interval_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="interval",
-    #     interval_range_s=(3.0, 6.0),  # 每 3~6 秒变一次指令
-    #     params={
-    #         "velocity_range": (0.3, 0.3),
-    #         # "velocity_range": (0.2, 0.4),
-    #         "yaw_range": (-0.0, 0.0),
-    #         # "yaw_range": (-0.1, 0.1),
-    #         # "yaw_range": (-0.2, 0.2),
-    #         "dual_sign": False,
-    #     },
-    # )
-
-    # ××××××××××××××××××××××××正反运动××××××××××××××××××××××××××××××××××
+    # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
     vel_range = EventTerm(
         func=range_curriculum,
         mode="reset",
@@ -303,40 +246,6 @@ class EventCfg:
         },
     )
 
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # vel_range = EventTerm(
-    #     func=range_curriculum,
-    #     mode="reset",
-    #     params={
-    #         "limit_ranges": (-0.2, 0.3),
-    #         "limit_yaw_ranges": (-0.3, 0.3),
-    #     },
-    # )
-
-    # # 1. Reset: 环境重置时生成新指令
-    # reset_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="reset",
-    #     params={
-    #         "velocity_range": (0.0, 0.1),
-    #         "yaw_range": (-0.1, 0.1),
-    #         "dual_sign": False,
-    #     },
-    # )
-
-    # # interval
-    # # 2. Interval: 每隔一段时间改变指令
-    # interval_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="interval",
-    #     interval_range_s=(3.0, 6.0),  # 每 3~6 秒变一次指令
-    #     params={
-    #         "velocity_range": (0.0, 0.1),
-    #         "yaw_range": (-0.1, 0.1),
-    #         "dual_sign": False,
-    #     },
-    # )
-
     # push_robot = EventTerm(
     #     func=mdp.push_by_setting_velocity,
     #     mode="interval",
@@ -346,7 +255,7 @@ class EventCfg:
 
 
 @configclass
-class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
+class Zbot6SEnvV5Cfg(DirectRLEnvCfg):
     # env
     episode_length_s = 20.0
     decimation = 4  # 2
@@ -423,7 +332,7 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # # If only per-step noise is desired, GaussianNoiseCfg can be used.
 
     # robot
-    robot: ArticulationCfg = ZBOT_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot: ArticulationCfg = ZBOT_6S_CFG_1.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
         history_length=3,
@@ -451,8 +360,8 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
 
             "feet_downward": -1.0,
             # "feet_forward": -0.5,
-            "step_length": 5.0,
-            # "step_length": 2.0,
+            # "step_length": 5.0,
+            "step_length": 2.0,
 
             "feet_air_time_biped": 1.0,
             "airtime_variance": -1.0,
@@ -469,10 +378,10 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # events.interval_command_resample.params["yaw_range"] = (-0.3, 0.3)
 
 
-class Zbot6SEnvV4(DirectRLEnv):
-    cfg: Zbot6SEnvV4Cfg
+class Zbot6SEnvV5(DirectRLEnv):
+    cfg: Zbot6SEnvV5Cfg
 
-    def __init__(self, cfg: Zbot6SEnvV4Cfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: Zbot6SEnvV5Cfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
