@@ -53,6 +53,7 @@ class ZbotKeyboardController:
         # 2. 禁用自动指令重采样 (由键盘接管)
         # 将事件设为 None，防止环境自动改变指令
         env_cfg.events.vel_range = None
+        env_cfg.events.my_curric = None
         env_cfg.events.reset_command_resample = None
         env_cfg.events.interval_command_resample = None
         
@@ -62,7 +63,8 @@ class ZbotKeyboardController:
 
         # 4. 加载策略
         # 路径指向你提供的 exported policy.pt
-        policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-04_15-55-45/exported/policy.pt"
+        # policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-04_15-55-45/exported/policy.pt"
+        policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-13_18-12-13/exported/policy.pt"
         print(f"Loading policy from: {policy_path}")
         try:
             self.policy = torch.jit.load(policy_path, map_location=self.device)
@@ -82,7 +84,7 @@ class ZbotKeyboardController:
         print("-" * 80)
         print("Zbot Keyboard Control Ready")
         print("Controls:")
-        print("  W / S : Increase/Decrease Linear Velocity X (+/- 0.1 m/s)")
+        print("  W / S : Increase/Decrease Linear Velocity X (+/- 0.05 m/s)")
         print("  A / D : Increase/Decrease Target Yaw (+/- 0.05 rad)")
         print("  R     : Reset Environment")
         print("  ESC   : Quit")
@@ -101,10 +103,10 @@ class ZbotKeyboardController:
             key = event.input.name
             
             if key == "W":
-                self.cmd_vel_x += 0.1
+                self.cmd_vel_x += 0.05
                 print(f"Velocity X: {self.cmd_vel_x:.2f}, Target Yaw: {self.cmd_yaw_target:.2f}")
             elif key == "S":
-                self.cmd_vel_x -= 0.1
+                self.cmd_vel_x -= 0.05
                 print(f"Velocity X: {self.cmd_vel_x:.2f}, Target Yaw: {self.cmd_yaw_target:.2f}")
             elif key == "A":
                 self.cmd_yaw_target += 0.05

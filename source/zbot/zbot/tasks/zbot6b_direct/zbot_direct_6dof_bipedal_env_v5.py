@@ -372,9 +372,9 @@ class Zbot6SEnvV5Cfg(DirectRLEnvCfg):
     # play script
     # debug_vis=True
     # events.vel_range = None  # disable automatic curriculum
-    # events.reset_command_resample.params["velocity_range"] = (-0.2, 0.3)
+    # events.reset_command_resample.params["velocity_range"] = (-0.3, 0.3)
     # events.reset_command_resample.params["yaw_range"] = (-0.3, 0.3)
-    # events.interval_command_resample.params["velocity_range"] = (-0.2, 0.3)
+    # events.interval_command_resample.params["velocity_range"] = (-0.3, 0.3)
     # events.interval_command_resample.params["yaw_range"] = (-0.3, 0.3)
 
 
@@ -712,6 +712,7 @@ class Zbot6SEnvV5(DirectRLEnv):
         feet_forward = torch.sum(
             torch.norm(
                 feet_x_w - self.base_dir_forward_w.unsqueeze(1),
+                # feet_x_w - (self.base_dir_forward_w * torch.sign(self.commands[:, 0:1])).unsqueeze(1),
                 dim=-1,
             ),
             dim=-1,

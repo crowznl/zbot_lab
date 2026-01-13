@@ -12,6 +12,7 @@ from .zbot_direct_6dof_bipedal_env_v3 import ZbotDirectEnvCfgV3, ZbotDirectEnvV3
 from .zbot_direct_12dof_bipedal_env import Zbot12BEnvCfg, Zbot12BEnv  # 12 dof
 from .zbot_direct_6dof_bipedal_env_v4 import Zbot6SEnvV4Cfg, Zbot6SEnvV4  # add command, curriculum by event. also debug visualization.
 from .zbot_direct_6dof_bipedal_env_v5 import Zbot6SEnvV5Cfg, Zbot6SEnvV5  # different initial pose
+from .zbot_direct_6_standup_env_v0 import Zbot6SUpEnvCfg, Zbot6SUpEnv  # stand up policy
 
 ##
 # Register Gym environments.
@@ -104,5 +105,15 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": Zbot6SEnvV5Cfg,
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Zbot6SEnvV5PPOCfg",
+    },
+)
+
+gym.register(
+    id="zbot-6b-standup-v0",
+    entry_point="zbot.tasks.zbot6b_direct:Zbot6SUpEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": Zbot6SUpEnvCfg,
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Zbot6SUpEnvPPOCfg",
     },
 )

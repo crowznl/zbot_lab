@@ -26,6 +26,11 @@
 # EventManager(事件管理器)在初始化时会读取配置，并将其转化为内部的列表 _mode_term_cfgs。
 # 通过 env.cfg.events... 访问到的配置对象，与 EventManager 内部持有的对象不是同一个实例。
 
+# 在 mode="reset" 的回调函数中，永远不要使用 == 来判断全局步数，因为你是无法保证重置事件恰好落在那个特定步数上的。
+# EventTerm(mode="reset")是注入到 self._reset_idx() super()中的，而 _reset_idx并不是每个step都会被调用。
+# 我一直认为step不管怎样都会调用self._reset_idx。刚刚看了源码，原来它有len(reset_env_ids) > 0的判断。
+# 这就是为什么用 == 几乎肯定会漏掉触发时机（除非那帧恰好有环境重置）。
+
 from __future__ import annotations
 
 import gymnasium as gym
@@ -106,6 +111,7 @@ def resample_commands(
         yaw_range: tuple[float, float],
         dual_sign: bool = True, 
         offset: float = 0.0,
+        prob_pos: float = 0.5,
     ):
     """Resample velocity and yaw commands."""
 
@@ -113,8 +119,10 @@ def resample_commands(
     low, high = velocity_range
     if dual_sign:
         # 随机生成符号 {-1, 1}
-        vel_sign = torch.randint(0, 2, (len(env_ids),), device=env.device) * 2.0 - 1.0
-        high += offset * (vel_sign - 1.0)  # 降低反方向的速度指令
+        # vel_sign = torch.randint(0, 2, (len(env_ids),), device=env.device) * 2.0 - 1.0
+        vel_sign = torch.bernoulli(torch.full((len(env_ids),), prob_pos, device=env.device)) * 2.0 - 1.0
+        
+        high = high + offset * (vel_sign - 1.0)  # 降低反方向的速度指令
         env.commands[env_ids, 0] = (torch.rand(len(env_ids), device=env.device) * (high - low) + low) * vel_sign
     else:
         env.commands[env_ids, 0] = torch.rand(len(env_ids), device=env.device) * (high - low) + low
@@ -126,20 +134,73 @@ def resample_commands(
     
     env.target_heading_yaw[env_ids] = math_utils.wrap_to_pi(env.current_yaw[env_ids] + env.commands[env_ids, 1])
 
+def my_curriculum(env: Zbot6SEnvV4, env_ids: torch.Tensor):
+    # if env.common_step_counter == (env.max_episode_length * 24):  # in the 1000 episodes
+    # if env.common_step_counter >= (env.max_episode_length * 24) and env.curriculum_stage == 0:  # in the 1000 episodes
+    if env.common_step_counter >= (env.max_episode_length * 12) and env.curriculum_stage == 0:  # in the 500 episodes
+        env.reward_scales["airtime_variance"] = -10.0
+        env.reward_scales["feet_forward"] = -1.0
+        env.reward_scales["feet_slide"] = -2.0
+
+        env.curriculum_stage += 1
+
+    elif env.common_step_counter >= (env.max_episode_length * 24) and env.curriculum_stage == 1:  # in the 1000 episodes
+        env.reward_scales["airtime_variance"] = -40.0
+        env.reward_scales["feet_downward"] = -5.0
+
+        reset_term = env.event_manager.get_term_cfg("reset_command_resample")
+        interval_term = env.event_manager.get_term_cfg("interval_command_resample")
+        reset_term.params["prob_pos"] = 0.8
+        interval_term.params["prob_pos"] = 0.8
+
+        env.curriculum_stage += 1
+
+    # elif env.common_step_counter == (env.max_episode_length * 48):  # in the 2000 episodes
+    #     reset_term = env.event_manager.get_term_cfg("reset_command_resample")
+    #     interval_term = env.event_manager.get_term_cfg("interval_command_resample")
+    #     reset_term.params["prob_pos"] = 0.7
+    #     interval_term.params["prob_pos"] = 0.7
+    #     # reset_term.params["prob_pos"] = 1.0
+    #     # interval_term.params["prob_pos"] = 1.0
+    
+    # elif env.common_step_counter == (env.max_episode_length * 72):  # in the 3000 episodes
+    #     reset_term = env.event_manager.get_term_cfg("reset_command_resample")
+    #     interval_term = env.event_manager.get_term_cfg("interval_command_resample")
+    #     reset_term.params["prob_pos"] = 0.6
+    #     interval_term.params["prob_pos"] = 0.6
+    #     # reset_term.params["prob_pos"] = 0.8
+    #     # interval_term.params["prob_pos"] = 0.8
+
+    # elif env.common_step_counter == (env.max_episode_length * 96):  # in the 4000 episodes
+    #     reset_term = env.event_manager.get_term_cfg("reset_command_resample")
+    #     interval_term = env.event_manager.get_term_cfg("interval_command_resample")
+    #     reset_term.params["prob_pos"] = 0.5
+    #     interval_term.params["prob_pos"] = 0.5
+
 def range_curriculum(
     env: Zbot6SEnvV4,
     env_ids: torch.Tensor,
     # reward_term_name: str = "track_lin_vel_x",
-    limit_ranges: tuple[float, float] = (0.0, 0.5),
-    limit_yaw_ranges: tuple[float, float] = (-0.5, 0.5),
-) -> torch.Tensor:
+    limit_ranges: tuple[float, float] = (0.0, 0.3),
+    limit_yaw_ranges: tuple[float, float] = (-0.3, 0.3),
+):
 
     if len(env.curriculum_vel_reward_buffer) < 20:
         return
     
+    # if env.common_step_counter == (env.max_episode_length * 12):
+    #     reset_term = env.event_manager.get_term_cfg("reset_command_resample")
+    #     interval_term = env.event_manager.get_term_cfg("interval_command_resample")
+    #     reset_term.params["dual_sign"] = True
+    #     interval_term.params["dual_sign"] = True
+
     # if (env.common_step_counter > 24 * 1000) & (env.common_step_counter % env.max_episode_length == 0):
     # if env.common_step_counter % (env.max_episode_length * 6) == 0:  # per 250 episodes
-    if env.common_step_counter % (env.max_episode_length * 24) == 0:  # per 1000 episodes
+    # if env.common_step_counter % (env.max_episode_length * 12) == 0:  # per 500 episodes
+    # if env.common_step_counter % (env.max_episode_length * 24) == 0:  # per 1000 episodes
+    if (env.common_step_counter >= (env.max_episode_length * 48)) & (env.common_step_counter % (env.max_episode_length * 12) == 0):  # >= 2000 episode per 500 episodes
+    # if (env.common_step_counter >= (env.max_episode_length * 72)) & (env.common_step_counter % (env.max_episode_length * 12) == 0):  # >= 3000 episode per 500 episodes
+    
 
         # reset_term = env.cfg.events.reset_command_resample
         # interval_term = env.cfg.events.interval_command_resample
@@ -152,7 +213,7 @@ def range_curriculum(
 
         # reward = torch.mean(env._episode_sums["track_lin_vel_x"][env_ids]) / env.max_episode_length_s
         reward = sum(env.curriculum_vel_reward_buffer) / len(env.curriculum_vel_reward_buffer)
-        if reward > env.reward_scales["track_lin_vel_x"] * 0.8:
+        if reward > env.reward_scales["track_lin_vel_x"] * 0.85:
             current_range = reset_term.params["velocity_range"]
             delta_range = torch.tensor([-0.05, 0.05], device=env.device)
             new_range = torch.clamp(
@@ -163,12 +224,17 @@ def range_curriculum(
             reset_term.params["velocity_range"] = tuple(new_range)
             interval_term.params["velocity_range"] = tuple(new_range)
 
+            # if not reset_term.params["dual_sign"]:
+            #     # 如果已经能够正向运动，则增加双向范围
+            #     reset_term.params["dual_sign"] = True
+            #     interval_term.params["dual_sign"] = True
+
         # if env.common_step_counter > 24 * 1000:  # num_steps_per_env * 1000 i.e. 1000 episodes
         # reward = torch.mean(env._episode_sums["track_heading_yaw"][env_ids]) / env.max_episode_length_s
         reward = sum(env.curriculum_yaw_reward_buffer) / len(env.curriculum_yaw_reward_buffer)
-        if reward > env.reward_scales["track_heading_yaw"] * 0.8:
+        if reward > env.reward_scales["track_heading_yaw"] * 0.85:
             current_range = reset_term.params["yaw_range"]
-            delta_range = torch.tensor([-0.1, 0.1], device=env.device)
+            delta_range = torch.tensor([-0.05, 0.05], device=env.device)
             new_range = torch.clamp(
                 torch.tensor(current_range, device=env.device) + delta_range,
                 limit_yaw_ranges[0],
@@ -268,6 +334,11 @@ class EventCfg:
     # )
 
     # ××××××××××××××××××××××××正反运动××××××××××××××××××××××××××××××××××
+    my_curric = EventTerm(
+        func=my_curriculum,
+        mode="reset",
+    )
+
     vel_range = EventTerm(
         func=range_curriculum,
         mode="reset",
@@ -286,6 +357,7 @@ class EventCfg:
             "yaw_range": (-0.1, 0.1),
             "dual_sign": True,
             "offset": 0.0,
+            "prob_pos": 1.0,
         },
     )
 
@@ -300,10 +372,11 @@ class EventCfg:
             "yaw_range": (-0.1, 0.1),
             "dual_sign": True,
             "offset": 0.0,
+            "prob_pos": 1.0,
         },
     )
 
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+    # # ×××××××××××××尝试过不用dual_sign，使得正反limit不一样。但后面设计了offset，又可以继续使用dual_sign了。而且测试发现机器人其实更容易学会倒着走。
     # vel_range = EventTerm(
     #     func=range_curriculum,
     #     mode="reset",
@@ -450,23 +523,115 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
             "joint_acc": -2.5e-7,
 
             "feet_downward": -1.0,
-            # "feet_forward": -0.5,
+            "feet_forward": -0.5,
             "step_length": 5.0,
             # "step_length": 2.0,
 
             "feet_air_time_biped": 1.0,
-            "airtime_variance": -1.0,
+            "airtime_variance": -5.0,  #-1.0,
             "feet_slide": -1.0,
         },
     }
 
-    # play script
+    # 依然只学会了倒着走
+    # events.reset_command_resample.params["velocity_range"] = (0.0, 0.1)
+    # events.interval_command_resample.params["velocity_range"] = (0.0, 0.1)
+
+    # per 500, 1000 episodes adjust velocity range
+    # events.reset_command_resample.params["dual_sign"] = False
+    # events.interval_command_resample.params["dual_sign"] = False
+    # events.reset_command_resample.params["velocity_range"] = (0.3, 0.3)
+    # events.interval_command_resample.params["velocity_range"] = (0.3, 0.3)
+
+    # per 500 episodes adjust velocity range, 0.4 not good
+    # events.reset_command_resample.params["dual_sign"] = False
+    # events.interval_command_resample.params["dual_sign"] = False
+    # events.vel_range.params["limit_ranges"] = (0.0, 0.4)
+    # events.reset_command_resample.params["velocity_range"] = (0.4, 0.4)
+    # events.interval_command_resample.params["velocity_range"] = (0.4, 0.4)
+
+    # per 1000 episodes adjust velocity range, set dual_sign=True in the 500 episodes
+    # events.reset_command_resample.params["dual_sign"] = False
+    # events.interval_command_resample.params["dual_sign"] = False
+    # events.reset_command_resample.params["velocity_range"] = (0.3, 0.3)
+    # events.interval_command_resample.params["velocity_range"] = (0.3, 0.3)
+
+    # 
+    # events.vel_range = None 
+    # events.reset_command_resample.params["dual_sign"] = False
+    # events.interval_command_resample.params["dual_sign"] = False
+    # events.reset_command_resample.params["velocity_range"] = (0.3, 0.3)
+    # events.interval_command_resample.params["velocity_range"] = (0.3, 0.3)  # ok
+    # events.reset_command_resample.params["velocity_range"] = (-0.3, -0.3)
+    # events.interval_command_resample.params["velocity_range"] = (-0.3, -0.3)  #stepl5 not move, stepl3 not move, stepl2 not good, stepl5+feetf0.5 good
+    # events.reset_command_resample.params["velocity_range"] = (-0.2, -0.2)
+    # events.interval_command_resample.params["velocity_range"] = (-0.2, -0.2)  #stepl5 not move, stepl2 not move
+    # events.reset_command_resample.params["velocity_range"] = (-0.4, -0.4)
+    # events.interval_command_resample.params["velocity_range"] = (-0.4, -0.4)  #stepl5 not move
+
+    # new curriculum, adjust resample command func  # fine, but prob_pos how many? 0.8正》反，0.7反》正
+    # events.vel_range = None 
+    # 1000 1，2500 0.8，later vel_range 正走又not good
+
+    # airtime_variance -10, 2000 1，3000 0.8，later vel_range
+    # airtime_variance -10 not good for 正走
+
+    # maybe 1 0.8 1 0.8?
+    # events.vel_range = None 
+
+    # # test airv-10, feetf 0.0 1000, add feetf-1.0 2000 not good，应该是因为airv-10本身就不太好，后面checkpoint1000看了下
+    # # test airv-10, feetf-0.5 no
+    # # test airv-5, feetf-0.5 1000it OK 右脚略大于左脚；2000it 右脚抬得更猛了 2026-01-12_00-05-49
+    # # test airv-5, feetf-1.0 no
+    # events.vel_range = None
+    # events.my_curric = None
+
+    # # 1 2000, 0.7 ? 2026-01-12_02-10-02 my_curric不能正常触发!!!!![fix bug]
+    # # 1 1000, 0.5 2000
+    # # 1 1000, 0.8 2000
+    # # 1 airv-5 1000, 0.8 airv-10 2000 2026-01-12_18-18-06 
+    # events.vel_range = None 
+
+    # # test airv-5, feetf-0.5 1000it，airv-10, feetf-0.5 2000it，没什么变化，还是右脚抬得更猛
+    # # test airv-5, feetf-0.5 1000it，airv-10, feetf-1.0 2000it，没什么变化，还是右脚抬得更猛
+    # # test airv-5, feetf-0.5 1000it，airv-20, feetf-1.0 2000it，没什么变化，还是右脚抬得更猛
+    # # test airv-5, feetf-0.5 1000it，airv-10, feetf-1.0 feets-2.0 2000it 还是右脚抬得更猛
+    # # test airv-5, feetf-0.5 1000it，airv-10, feetf-1.0 feets-5.0 2000it 还是右脚抬得更猛
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it Ok，2000it Ok 2026-01-12_23-24-31
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, 0.8 2000it Ok 2026-01-13_00-59-49 > 2026-01-12_18-18-06 
+    # events.vel_range = None 
+
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, 0.8 2000it，later vel_range 还是右脚抬得更猛
+
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 2000it 2026-01-13_14-23-17 > 2026-01-12_23-24-31
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 2000it 也还行 2026-01-13_17-20-58
+    # events.vel_range = None 
+
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it，later vel_range 6000it OK 还是右脚抬得更猛
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it，later vel_range 6000it 要好些 2026-01-13_18-12-13 
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-3.0 0.8 2000it，later vel_range 8000it
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 8000it
+    events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
+
+    # # 修改了下airtime_variance的计算方式，以及steplength no reward for zero command 
+    # # bad，对feetdownward的影响较大，改回去了
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it 改了airv好像确实有点用
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it 没什么变化，对feetdownward的影响一样较大
+    # events.vel_range = None
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it，later vel_range 8000it bad
+    # events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
+
+    # # play script
     # debug_vis=True
     # events.vel_range = None  # disable automatic curriculum
-    # events.reset_command_resample.params["velocity_range"] = (-0.2, 0.3)
-    # events.reset_command_resample.params["yaw_range"] = (-0.3, 0.3)
-    # events.interval_command_resample.params["velocity_range"] = (-0.2, 0.3)
-    # events.interval_command_resample.params["yaw_range"] = (-0.3, 0.3)
+    # events.my_curric = None
+    # events.reset_command_resample.params["dual_sign"] = False
+    # events.reset_command_resample.params["velocity_range"] = (-0.3, 0.3)
+    # events.reset_command_resample.params["yaw_range"] = (-0.3, 0.3) # (-0.1, 0.1)
+    # events.interval_command_resample.params["dual_sign"] = False
+    # events.interval_command_resample.params["velocity_range"] = (-0.3, 0.3)
+    # events.interval_command_resample.params["yaw_range"] = (-0.3, 0.3)  # (-0.3, 0.3)
 
 
 class Zbot6SEnvV4(DirectRLEnv):
@@ -487,6 +652,7 @@ class Zbot6SEnvV4(DirectRLEnv):
         self.current_yaw = torch.zeros(self.num_envs, device=self.device)
         self.target_heading_yaw = torch.zeros(self.num_envs, device=self.device)
 
+        self.curriculum_stage = 0
         # 用于课程学习的滑动平均缓冲区，是 按每个reset环境的奖励值（用extend），还是 按每次step的平均奖励值（用append）来储存，在_reset_idx中设计实现
         self.curriculum_vel_reward_buffer = deque(maxlen=1*24)
         self.curriculum_yaw_reward_buffer = deque(maxlen=1*24)
@@ -729,6 +895,7 @@ class Zbot6SEnvV4(DirectRLEnv):
         # 稳定在大约 num_envs / max_episode_length 个环境（.e.g 4096/1000 = 4.1）。
         # 因此，关注它，不如关注OnpolicyRunner log的平均回合长度mean_episode_length！它越接近max_episode_length，说明训练得好。
         
+        extras["Curriculum/curriculum_stage"] = self.curriculum_stage
         if self.cfg.events.reset_command_resample is not None:
             # extras["Curriculum/vel_lower_bound"] = self.cfg.events.reset_command_resample.params["velocity_range"][0]
             # extras["Curriculum/vel_upper_bound"] = self.cfg.events.reset_command_resample.params["velocity_range"][1]
@@ -864,8 +1031,13 @@ class Zbot6SEnvV4(DirectRLEnv):
         
         self.feet_down_pos_last[feet_down_idx, :] = self.feet_pos_w[feet_down_idx, :]
         self.feet_contact_forces_last[:] = self.feet_contact_forces[:]  # refresh last
-        return torch.tanh(15.0*rew_feet_step_length)
+        
+        rew = torch.tanh(15.0*rew_feet_step_length)
         # arctan和tanh是两种完全不同的数学函数，前者输出(-π/2, π/2)，后者输出(-1, 1)。tanh(1)≈0.7616，tanh(2)≈0.96，tanh(5)≈0.9999
+        
+        # no reward for zero command
+        # rew *= self.commands[:, 0].abs() >= 0.05
+        return rew
 
     def _reward_airtime_variance(self):
         last_air_time = self._contact_sensor.data.last_air_time[:, self._feet_ids]
@@ -873,6 +1045,8 @@ class Zbot6SEnvV4(DirectRLEnv):
         return torch.var(torch.clip(last_air_time, max=0.5), dim=1) + torch.var(
             torch.clip(last_contact_time, max=0.5), dim=1
         )
+        # return torch.var(last_air_time, dim=1) + torch.var(last_contact_time, dim=1)
+
 
     def _reward_airtime_sum(self):
         feet_air_times = self._contact_sensor.data.last_air_time[:, self._feet_ids]
