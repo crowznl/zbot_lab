@@ -162,7 +162,7 @@ class EventCfg:
 @configclass
 class Zbot6SUpEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 20.0
+    episode_length_s = 6.0
     decimation = 4  # 2
     action_space = 6  #24 for sin ;  6 for pd
     observation_space = 22
@@ -573,7 +573,7 @@ class Zbot6SUpEnv(DirectRLEnv):
         return base_height
     
     def _reward_upward(self):
-        body_states = self._robot.data.body_link_pos_w  # (num_envs, num_bodies, 3)
+        body_states = self._robot.data.body_link_state_w  # (num_envs, num_bodies, 13)
         rew_height = body_states[:, 6, 2] + 0.5*body_states[:, 4, 2] + 0.5*body_states[:, 8, 2] - 0.1*torch.ones_like(body_states[:, 6, 2])
         rew_upward = torch.where(body_states[:, 6, 2] < 0.22,
                                  rew_height + 0.5*body_states[:, 6, 9] + 0.5*body_states[:, 5, 9],

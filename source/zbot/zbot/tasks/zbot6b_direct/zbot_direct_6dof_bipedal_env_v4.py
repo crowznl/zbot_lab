@@ -610,8 +610,8 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
 
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it，later vel_range 6000it OK 还是右脚抬得更猛
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it，later vel_range 6000it 要好些 2026-01-13_18-12-13 
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-3.0 0.8 2000it，later vel_range 8000it
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 8000it
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-3.0 0.8 2000it，later vel_range 8000it 2026-01-14_01-14-28
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 8000it 2026-01-14_03-03-33 > 2026-01-14_01-14-28
     events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
 
     # # 修改了下airtime_variance的计算方式，以及steplength no reward for zero command 
@@ -622,16 +622,16 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it，later vel_range 8000it bad
     # events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
 
-    # # play script
-    # debug_vis=True
-    # events.vel_range = None  # disable automatic curriculum
-    # events.my_curric = None
-    # events.reset_command_resample.params["dual_sign"] = False
-    # events.reset_command_resample.params["velocity_range"] = (-0.3, 0.3)
-    # events.reset_command_resample.params["yaw_range"] = (-0.3, 0.3) # (-0.1, 0.1)
-    # events.interval_command_resample.params["dual_sign"] = False
-    # events.interval_command_resample.params["velocity_range"] = (-0.3, 0.3)
-    # events.interval_command_resample.params["yaw_range"] = (-0.3, 0.3)  # (-0.3, 0.3)
+    # play script
+    debug_vis=True
+    events.vel_range = None  # disable automatic curriculum
+    events.my_curric = None
+    events.reset_command_resample.params["dual_sign"] = False
+    events.reset_command_resample.params["velocity_range"] = (-0.3, 0.3)
+    events.reset_command_resample.params["yaw_range"] = (-0.3, 0.3) # (-0.1, 0.1)
+    events.interval_command_resample.params["dual_sign"] = False
+    events.interval_command_resample.params["velocity_range"] = (-0.3, 0.3)
+    events.interval_command_resample.params["yaw_range"] = (-0.3, 0.3)  # (-0.3, 0.3)
 
 
 class Zbot6SEnvV4(DirectRLEnv):
