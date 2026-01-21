@@ -64,7 +64,8 @@ class ZbotKeyboardController:
         # 4. 加载策略
         # 路径指向你提供的 exported policy.pt
         # policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-04_15-55-45/exported/policy.pt"
-        policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-13_18-12-13/exported/policy.pt"
+        # policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-13_18-12-13/exported/policy.pt"
+        policy_path ="/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-14_03-03-33/exported/policy.pt"
         print(f"Loading policy from: {policy_path}")
         try:
             self.policy = torch.jit.load(policy_path, map_location=self.device)

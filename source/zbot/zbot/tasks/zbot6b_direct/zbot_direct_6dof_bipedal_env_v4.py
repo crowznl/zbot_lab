@@ -611,7 +611,7 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it，later vel_range 6000it OK 还是右脚抬得更猛
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it，later vel_range 6000it 要好些 2026-01-13_18-12-13 
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-3.0 0.8 2000it，later vel_range 8000it 2026-01-14_01-14-28
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 8000it 2026-01-14_03-03-33 > 2026-01-14_01-14-28
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 8000it 2026-01-14_03-03-33 > 2026-01-14_01-14-28  <<==========
     events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
 
     # # 修改了下airtime_variance的计算方式，以及steplength no reward for zero command 
