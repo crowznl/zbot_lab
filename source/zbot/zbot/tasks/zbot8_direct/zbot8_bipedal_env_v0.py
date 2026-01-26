@@ -3,33 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# obs修改：相对角度指令commands[1]改为显示的heading_err，否则网络难以学习！！！
-# 参考zbot_quad_direct/zbot_direct_4leg_env_v1.py
-
-# 修改_rew_step_length，适应正反行走
-
-# 控制台/TensorBoard的信息是在on_policy_runner.py的log方法中实现的，一定要意识到它记录的是统计平均值！！！
-# 每次iteration，计算num_steps_per_env（i.e. 24）个steps的平均值。
-# 收集阶段：OnPolicyRunner 会运行 num_steps_per_env 步（比如 24 步）。
-# 累积：在这 24 步的过程中，extras["log"]都会被收集到 ep_infos 列表中。
-# 平均：log 函数执行 value = torch.mean(infotensor)。
-# 因此，在课程学习（Curriculum Learning）中，最好也使用滑动平均(Rolling Average)缓冲区来计算奖励的平均值，而不是某一帧的数据，避免过早提升难度。
-
-# 将日志记录逻辑移到 _reset_idx 的最前面，并使用episode_length_buf计算实际时长，进而计算单位时间内奖励的平均。
-
-# DirectRLEnv.step()遵循较新的Gymnasium接口，返回5个值 (obs, rewards, terminated, truncated, extras)，
-# 而OnPolicyRunner期望的env.step()返回4个值 (obs, rewards, dones, extras)，这是通过包装器(Wrapper)实现的。
-# env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)  # wrap around environment for rsl-rl
-
-# 一个非常微妙但致命的问题。原因在于Python 对象引用和 @configclass 装饰器的行为机制。
-# 简单来说：修改 env.cfg.events.reset_command_resample 这个配置对象没有用，
-# EventManager(事件管理器)在初始化时会读取配置，并将其转化为内部的列表 _mode_term_cfgs。
-# 通过 env.cfg.events... 访问到的配置对象，与 EventManager 内部持有的对象不是同一个实例。
-
-# 在 mode="reset" 的回调函数中，永远不要使用 == 来判断全局步数，因为你是无法保证重置事件恰好落在那个特定步数上的。
-# EventTerm(mode="reset")是注入到 self._reset_idx() super()中的，而 _reset_idx并不是每个step都会被调用。
-# 我一直认为step不管怎样都会调用self._reset_idx。刚刚看了源码，原来它有len(reset_env_ids) > 0的判断。
-# 这就是为什么用 == 几乎肯定会漏掉触发时机（除非那帧恰好有环境重置）。
+# 参考tasks/zbot6b_direct/zbot_direct_6dof_bipedal_env_v4.py
 
 from __future__ import annotations
 
@@ -54,10 +28,10 @@ from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg 
 from isaaclab.utils import configclass
 
-from zbot.assets import ZBOT_6S_CFG
+from zbot.assets import ZBOT_8S_CFG
 
 def reset_root_state_uniform(
-    env: Zbot6SEnvV4,
+    env: Zbot8SEnvV0,
     env_ids: torch.Tensor,
     pose_range: dict[str, tuple[float, float]],
     velocity_range: dict[str, tuple[float, float]],
@@ -89,7 +63,7 @@ def reset_root_state_uniform(
 
     positions = root_states[:, 0:3] + env.scene.env_origins[env_ids] + rand_samples[:, 0:3]
     orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
-    orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
+    orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)  # 若遇到旋转问题，请参考tasks/zbot6b_direct/zbot_direct_6_standup_env_v0.py
     # orientations = math_utils.random_yaw_orientation(len(env_ids), device=env.device)  # another methods, if only random yaw
 
     # velocities
@@ -105,7 +79,7 @@ def reset_root_state_uniform(
 
 # --- Command Resampling (供 EventManager 调用) ---
 def resample_commands(
-        env: Zbot6SEnvV4, 
+        env: Zbot8SEnvV0, 
         env_ids: torch.Tensor, 
         velocity_range: tuple[float, float], 
         yaw_range: tuple[float, float],
@@ -134,7 +108,7 @@ def resample_commands(
     
     env.target_heading_yaw[env_ids] = math_utils.wrap_to_pi(env.current_yaw[env_ids] + env.commands[env_ids, 1])
 
-def my_curriculum(env: Zbot6SEnvV4, env_ids: torch.Tensor):
+def my_curriculum(env: Zbot8SEnvV0, env_ids: torch.Tensor):
     # if env.common_step_counter == (env.max_episode_length * 24):  # in the 1000 episodes
     # if env.common_step_counter >= (env.max_episode_length * 24) and env.curriculum_stage == 0:  # in the 1000 episodes
     if env.common_step_counter >= (env.max_episode_length * 12) and env.curriculum_stage == 0:  # in the 500 episodes
@@ -185,12 +159,12 @@ def my_curriculum(env: Zbot6SEnvV4, env_ids: torch.Tensor):
     # elif env.common_step_counter >= (env.max_episode_length * 144) and env.curriculum_stage == 3:  # in the 6000 episodes
         env.reward_scales["feet_harmony"] = 1.0
         env.reward_scales["feet_downward"] = -8.0
-
-        env.reward_scales["step_length"] = 6.0
+        
+        env.reward_scales["step_length"] = 7.0
         env.curriculum_stage += 1
 
 def range_curriculum(
-    env: Zbot6SEnvV4,
+    env: Zbot8SEnvV0,
     env_ids: torch.Tensor,
     # reward_term_name: str = "track_lin_vel_x",
     limit_ranges: tuple[float, float] = (0.0, 0.3),
@@ -199,27 +173,10 @@ def range_curriculum(
 
     if len(env.curriculum_vel_reward_buffer) < 20:
         return
-    
-    # if env.common_step_counter == (env.max_episode_length * 12):
-    #     reset_term = env.event_manager.get_term_cfg("reset_command_resample")
-    #     interval_term = env.event_manager.get_term_cfg("interval_command_resample")
-    #     reset_term.params["dual_sign"] = True
-    #     interval_term.params["dual_sign"] = True
 
-    # if (env.common_step_counter > 24 * 1000) & (env.common_step_counter % env.max_episode_length == 0):
-    # if env.common_step_counter % (env.max_episode_length * 6) == 0:  # per 250 episodes
-    # if env.common_step_counter % (env.max_episode_length * 12) == 0:  # per 500 episodes
-    # if env.common_step_counter % (env.max_episode_length * 24) == 0:  # per 1000 episodes
     if (env.common_step_counter >= (env.max_episode_length * 48)) & (env.common_step_counter % (env.max_episode_length * 12) == 0):  # >= 2000 episode per 500 episodes
     # if (env.common_step_counter >= (env.max_episode_length * 72)) & (env.common_step_counter % (env.max_episode_length * 12) == 0):  # >= 3000 episode per 500 episodes
-    
 
-        # reset_term = env.cfg.events.reset_command_resample
-        # interval_term = env.cfg.events.interval_command_resample
-        # print(env.commands)
-        # 错误的方法，你会发现log的参数变了但实际resample command时的range还是初始范围
-        # [Fix] Obtain the actual configuration object used by the EventManager.
-        # Accessing env.cfg.events directly might return a different instance or copy.
         reset_term = env.event_manager.get_term_cfg("reset_command_resample")
         interval_term = env.event_manager.get_term_cfg("interval_command_resample")
 
@@ -235,11 +192,6 @@ def range_curriculum(
             ).tolist()
             reset_term.params["velocity_range"] = tuple(new_range)
             interval_term.params["velocity_range"] = tuple(new_range)
-
-            # if not reset_term.params["dual_sign"]:
-            #     # 如果已经能够正向运动，则增加双向范围
-            #     reset_term.params["dual_sign"] = True
-            #     interval_term.params["dual_sign"] = True
 
         # if env.common_step_counter > 24 * 1000:  # num_steps_per_env * 1000 i.e. 1000 episodes
         # reward = torch.mean(env._episode_sums["track_heading_yaw"][env_ids]) / env.max_episode_length_s
@@ -312,40 +264,6 @@ class EventCfg:
         },
     )
     
-    # # ××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
-    # vel_range = None
-
-    # # 1. Reset: 环境重置时生成新指令
-    # reset_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="reset",
-    #     params={
-    #         "velocity_range": (0.3, 0.3),
-    #         # "velocity_range": (0.2, 0.4),
-    #         "yaw_range": (-0.0, 0.0),
-    #         # "yaw_range": (-0.1, 0.1),
-    #         # "yaw_range": (-0.2, 0.2),  # not good
-    #         "dual_sign": False,
-    #     },
-    # )
-
-    # # interval
-    # # 2. Interval: 每隔一段时间改变指令
-    # interval_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="interval",
-    #     interval_range_s=(3.0, 6.0),  # 每 3~6 秒变一次指令
-    #     params={
-    #         "velocity_range": (0.3, 0.3),
-    #         # "velocity_range": (0.2, 0.4),
-    #         "yaw_range": (-0.0, 0.0),
-    #         # "yaw_range": (-0.1, 0.1),
-    #         # "yaw_range": (-0.2, 0.2),
-    #         "dual_sign": False,
-    #     },
-    # )
-
-    # ××××××××××××××××××××××××正反运动××××××××××××××××××××××××××××××××××
     my_curric = EventTerm(
         func=my_curriculum,
         mode="reset",
@@ -388,40 +306,6 @@ class EventCfg:
         },
     )
 
-    # # ×××××××××××××尝试过不用dual_sign，使得正反limit不一样。但后面设计了offset，又可以继续使用dual_sign了。而且测试发现机器人其实更容易学会倒着走。
-    # vel_range = EventTerm(
-    #     func=range_curriculum,
-    #     mode="reset",
-    #     params={
-    #         "limit_ranges": (-0.2, 0.3),
-    #         "limit_yaw_ranges": (-0.3, 0.3),
-    #     },
-    # )
-
-    # # 1. Reset: 环境重置时生成新指令
-    # reset_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="reset",
-    #     params={
-    #         "velocity_range": (0.0, 0.1),
-    #         "yaw_range": (-0.1, 0.1),
-    #         "dual_sign": False,
-    #     },
-    # )
-
-    # # interval
-    # # 2. Interval: 每隔一段时间改变指令
-    # interval_command_resample = EventTerm(
-    #     func=resample_commands,
-    #     mode="interval",
-    #     interval_range_s=(3.0, 6.0),  # 每 3~6 秒变一次指令
-    #     params={
-    #         "velocity_range": (0.0, 0.1),
-    #         "yaw_range": (-0.1, 0.1),
-    #         "dual_sign": False,
-    #     },
-    # )
-
     # push_robot = EventTerm(
     #     func=mdp.push_by_setting_velocity,
     #     mode="interval",
@@ -431,17 +315,17 @@ class EventCfg:
 
 
 @configclass
-class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
+class Zbot8SEnvV0Cfg(DirectRLEnvCfg):
     # env
     episode_length_s = 20.0
     decimation = 4  # 2
-    action_space = 6  #24 for sin ;  6 for pd
-    observation_space = 24
+    action_space = 8 
+    observation_space = 30
     state_space = 0
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
-        dt=1 / 200.0,  # 1 / 60.0,
+        dt=1 / 200.0,
         render_interval=decimation,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -508,7 +392,7 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # # If only per-step noise is desired, GaussianNoiseCfg can be used.
 
     # robot
-    robot: ArticulationCfg = ZBOT_6S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot: ArticulationCfg = ZBOT_8S_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
         history_length=3,
@@ -637,8 +521,7 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 8.0 4000it feetha_3 1.0 feetd-8.0 6000it 2026-01-23_20-24-50 步子是大了，但感觉容易摔
     # feet_close 0.13 bad >7800it move; 0.12 worse not move; 0.115 ok
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it feetha_3 1.0 feetd-8.0 6000it OK 2026-01-25_16-24-24_feetc0115 <<==========
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 7.0 feetha_3 1.0 feetd-8.0 6000it 步子大了些，但感觉容易摔
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 6.0 feetha_3 1.0 feetd-8.0 6000it
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 7.0 feetha_3 1.0 feetd-8.0 6000it
     events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
 
     # # 修改了下airtime_variance的计算方式，以及steplength no reward for zero command 
@@ -661,10 +544,10 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # events.interval_command_resample.params["yaw_range"] = (-0.3, 0.3)  # (-0.3, 0.3)
 
 
-class Zbot6SEnvV4(DirectRLEnv):
-    cfg: Zbot6SEnvV4Cfg
+class Zbot8SEnvV0(DirectRLEnv):
+    cfg: Zbot8SEnvV0Cfg
 
-    def __init__(self, cfg: Zbot6SEnvV4Cfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: Zbot8SEnvV0Cfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
@@ -700,6 +583,8 @@ class Zbot6SEnvV4(DirectRLEnv):
         self.joint_speed_limit = 1.0 * torch.ones((self.num_envs, 1), device=self.device)  # 固定为1.0，不再作为obs
 
         # Get specific body indices
+        print(self._robot.find_joints("joint.*"))
+
         self._feet_ids, _ = self._contact_sensor.find_bodies("foot.*")
         self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies("base|a.*|b.*")
         self.base_body_idx = self._robot.find_bodies("base")[0]
@@ -707,10 +592,10 @@ class Zbot6SEnvV4(DirectRLEnv):
 
         self.z_w = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 2, 1))  # torch.Size([4096, 2, 3])
         self.axis_x_feet = torch.tensor(
-            [1, 0, 0], device=self.sim.device, dtype=torch.float32
-        ).repeat((self.num_envs, 2, 1))
+            [[0.7071, 0.0, -0.7071], [0.7071, 0.0, -0.7071]], device=self.sim.device, dtype=torch.float32
+        ).repeat((self.num_envs, 1, 1))
         self.axis_z_feet = torch.tensor(
-            [[0, 0, 1], [0, 0, -1]], device=self.sim.device, dtype=torch.float32
+            [[0, 1, 0], [0, -1, 0]], device=self.sim.device, dtype=torch.float32
         ).repeat((self.num_envs, 1, 1))
 
         self.feet_contact_forces_last = 15.0 * torch.ones((self.num_envs, 2), device=self.device)
@@ -787,13 +672,16 @@ class Zbot6SEnvV4(DirectRLEnv):
         self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze(1)
         self.feet_quat_w = self._robot.data.body_link_quat_w[:, self.feet_body_idx]
         self.feet_pos_w = self._robot.data.body_link_pos_w[:, self.feet_body_idx]
-        # print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
-        # print(self.base_quat_w[:2])  # [ 0.6003, -0.6003, -0.3735, -0.3739]
-        # print(self.feet_pos_w[:2, :, 2])  # tensor([[0.0000e+00, 5.3035e-02],[1.8626e-09, 5.3035e-02]], device='cuda:0')
 
-        axis_z = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
-        # base body axis z point to world Y  # -------------------------------------------------------------------------------------------------------attention
-        self.base_shoulder_w = math_utils.quat_apply(self.base_quat_w, axis_z)  # torch.Size([4096, 3])
+        print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
+        print(self.base_quat_w[:2])  # [ 0.6003, -0.6003, -0.3735, -0.3739]
+        print(self.feet_pos_w[:2, :, 2])  # tensor([[0.0000e+00, 5.3035e-02],[1.8626e-09, 5.3035e-02]], device='cuda:0')
+        print(math_utils.quat_apply(self.feet_quat_w, self.axis_z_feet)[0])
+        print(math_utils.quat_apply(self.feet_quat_w, self.axis_x_feet)[0])
+
+        axis_y = torch.tensor([0, 1, 0], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
+        # base body axis y point to world Y  # -------------------------------------------------------------------------------------------------------attention
+        self.base_shoulder_w = math_utils.quat_apply(self.base_quat_w, axis_y)  # torch.Size([4096, 3])
         self.base_dir_forward_w = torch.cross(self._robot.data.GRAVITY_VEC_W, self.base_shoulder_w, dim=-1)  # torch.Size([4096, 3])
 
         # # 如果USD中，articulation root就在base_link上，可以用下面这种更简单的方法计算

@@ -41,7 +41,9 @@ robot_6_node_usd_v1 = "zbot_6s_v06.usd"  # change Xform's frame align to initial
 robot_6_node_usd_v2 = "zbot_6s_v07.usd"  # recreate articulation root at base
 robot_12_node_usd = "zbot_12s_v00.usd"
 
-robot_8_usd = "zbot_8s_v0.usd"
+robot_8_usd = "zbot_8s_v0.usd"  # very old version
+robot_8s_usd = "zbot_8s_new.usd"  # with base node
+
 # robot_6w_usd = "zbot_6w_v0.usd"
 robot_6w_usd = "zbot_6w_v1.usd"  # change pivot_b's frame
 robot_2_usd = "zbot_2s_v0.usd"
@@ -715,6 +717,7 @@ ZBOT_6S_CFG_1 = ArticulationCfg(
     },
 )
 
+# for stand up training
 ZBOT_6S_CFG_2 = ArticulationCfg(
     # prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
@@ -1049,6 +1052,59 @@ ZBOT_4L_CFG = ArticulationCfg(
             velocity_limit=10,
             stiffness=20,  # kp
             damping=2.0,  # kd
+            friction=0.0,
+        ),
+    },
+)
+
+ZBOT_8S_CFG = ArticulationCfg(
+    # prim_path="{ENV_REGEX_NS}/Robot",
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=usd_dir_path + robot_8s_usd,
+        activate_contact_sensors=True,  # True
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,  # True
+            solver_position_iteration_count=4,
+            solver_velocity_iteration_count=0,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.212),
+        rot=(1.0, 0.0, 0.0, 0.0),
+        # rot = (0.707, 0.0, 0.707, 0.0),  # (w, x, y, z); y-axis -90; if y-axis 90, rot = (0.707, 0.0, 0.707, 0.0)
+        joint_pos={
+            "joint1": 0.785398,  # 45 degrees
+            "joint2": -1.570796,
+            "joint3": 0.0,
+            "joint4": 0.0,
+             
+            "joint7": -0.785398,
+            "joint8": 1.570796,
+            "joint9": 0.0,
+            "joint10": 0.0,
+        },
+        joint_vel={
+            "joint[1-4]": 0.0,
+            "joint[7-10]": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=1.0,
+    actuators={
+        "zbot_six": ImplicitActuatorCfg(
+            joint_names_expr=["joint.*"],
+            effort_limit=20,
+            velocity_limit=20,
+            stiffness=50.0,  # kp
+            damping=5.0,  # kd
             friction=0.0,
         ),
     },

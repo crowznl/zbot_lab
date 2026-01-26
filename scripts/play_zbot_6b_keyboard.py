@@ -4,6 +4,7 @@
 
 用法:
     ./isaaclab.sh -p scripts/play_zbot_6b_keyboard.py
+    python scripts/play_zbot_6b_keyboard.py
 """
 
 # 参考 https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/input-devices/keyboard.html
@@ -65,7 +66,9 @@ class ZbotKeyboardController:
         # 路径指向你提供的 exported policy.pt
         # policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-04_15-55-45/exported/policy.pt"
         # policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-13_18-12-13/exported/policy.pt"
-        policy_path ="/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-14_03-03-33/exported/policy.pt"
+        # policy_path ="/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-14_03-03-33/exported/policy.pt"
+        policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-23_15-20-39/exported/policy_walk_keyboard.pt"
+        # policy_path = "/home/crowznl/Dev/isaac/myExt/zbot_lab/logs/rsl_rl/zbot_6b_flat_direct_v4/2026-01-23_20-24-50/exported/policy.pt"
         print(f"Loading policy from: {policy_path}")
         try:
             self.policy = torch.jit.load(policy_path, map_location=self.device)
