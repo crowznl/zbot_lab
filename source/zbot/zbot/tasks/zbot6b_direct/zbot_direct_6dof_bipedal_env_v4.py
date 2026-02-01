@@ -195,7 +195,7 @@ def my_curriculum(env: Zbot6SEnvV4, env_ids: torch.Tensor):
         reset_term.params["prob_pos"] = 0.6  # 0.7
         interval_term.params["prob_pos"] = 0.6  # 0.7
 
-        env.reward_scales["feet_close"] = -110.0
+        env.reward_scales["feet_close"] = -120.0
         env.curriculum_stage += 1
 
 def range_curriculum(
