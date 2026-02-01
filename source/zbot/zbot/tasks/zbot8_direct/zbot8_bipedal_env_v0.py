@@ -5,6 +5,11 @@
 
 # 参考tasks/zbot6b_direct/zbot_direct_6dof_bipedal_env_v4.py
 
+# atention joint order:
+# ([1, 3, 5, 7, 0, 2, 4, 6], ['joint1', 'joint2', 'joint3', 'joint4', 'joint7', 'joint8', 'joint9', 'joint10'])
+# 要么在训练时用self._joint_idx
+# 要么在sim2real时按照默认的顺序拼obs和发送信息
+
 from __future__ import annotations
 
 import gymnasium as gym
@@ -583,16 +588,29 @@ class Zbot8SEnvV0(DirectRLEnv):
         self.joint_speed_limit = 1.0 * torch.ones((self.num_envs, 1), device=self.device)  # 固定为1.0，不再作为obs
 
         # Get specific body indices
-        print(self._robot.find_joints("joint.*"))
+        # print(self._robot.find_joints("joint.*"))  # ([0, 1, 2, 3, 4, 5, 6, 7], ['joint7', 'joint1', 'joint8', 'joint2', 'joint9', 'joint3', 'joint10', 'joint4'])
+        # print(self._robot.find_bodies("foot.*"))  # ([15, 16], ['foot1', 'foot0']) 注意foot1竟然在前
+        # print(self._robot.find_bodies("foot.*", True))  # ([15, 16], ['foot1', 'foot0'])
+        # print(self._robot.find_bodies(["foot0", "foot1"], True))  # ([16, 15], ['foot0', 'foot1'])
+
+        print(self._robot.find_joints(['joint1', 'joint2', 'joint3', 'joint4', 'joint7', 'joint8', 'joint9', 'joint10'], preserve_order=True))
+        # ([1, 3, 5, 7, 0, 2, 4, 6], ['joint1', 'joint2', 'joint3', 'joint4', 'joint7', 'joint8', 'joint9', 'joint10'])
+        # 要么在训练时用self._joint_idx
+        # self._joint_idx, _ = self._robot.find_joints(['joint1', 'joint2', 'joint3', 'joint4', 'joint7', 'joint8', 'joint9', 'joint10'], preserve_order=True)
+        # self.joint_pos = self._robot.data.joint_pos[:, self._joint_idx]
+        # self.joint_vel = self._robot.data.joint_vel[:, self._joint_idx] 然后在_get_observations()中拼obs使用
+        # self._robot.set_joint_position_target(self._processed_actions, self._joint_idx)
+        # 要么在sim2real时按照默认的顺序拼obs和发送信息
 
         self._feet_ids, _ = self._contact_sensor.find_bodies("foot.*")
         self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies("base|a.*|b.*")
         self.base_body_idx = self._robot.find_bodies("base")[0]
-        self.feet_body_idx = self._robot.find_bodies("foot.*")[0]
+        # self.feet_body_idx = self._robot.find_bodies("foot.*")[0]
+        self.feet_body_idx = self._robot.find_bodies(["foot0", "foot1"], True)[0]
 
         self.z_w = torch.tensor([0, 0, 1], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 2, 1))  # torch.Size([4096, 2, 3])
         self.axis_x_feet = torch.tensor(
-            [[0.7071, 0.0, -0.7071], [0.7071, 0.0, -0.7071]], device=self.sim.device, dtype=torch.float32
+            [[0.7071, 0.0, 0.7071], [0.7071, 0.0, 0.7071]], device=self.sim.device, dtype=torch.float32
         ).repeat((self.num_envs, 1, 1))
         self.axis_z_feet = torch.tensor(
             [[0, 1, 0], [0, -1, 0]], device=self.sim.device, dtype=torch.float32
@@ -673,11 +691,12 @@ class Zbot8SEnvV0(DirectRLEnv):
         self.feet_quat_w = self._robot.data.body_link_quat_w[:, self.feet_body_idx]
         self.feet_pos_w = self._robot.data.body_link_pos_w[:, self.feet_body_idx]
 
-        print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
-        print(self.base_quat_w[:2])  # [ 0.6003, -0.6003, -0.3735, -0.3739]
-        print(self.feet_pos_w[:2, :, 2])  # tensor([[0.0000e+00, 5.3035e-02],[1.8626e-09, 5.3035e-02]], device='cuda:0')
-        print(math_utils.quat_apply(self.feet_quat_w, self.axis_z_feet)[0])
-        print(math_utils.quat_apply(self.feet_quat_w, self.axis_x_feet)[0])
+        # print(self.base_pos_w[:4, 2])  # tensor([0.3179, 0.3179, 0.3178, 0.3174], device='cuda:0')
+        # print(self.base_quat_w[:2])  # [ 1, 0, 0, 0]
+        # print(self.feet_pos_w[:2, :, 2])  # tensor([[0.0531, 0.0530], [0.0530, 0.0530]], device='cuda:0')
+        # print(math_utils.quat_apply(self.feet_quat_w, self.axis_z_feet)[0])  # [[-3.0246e-04, -2.4126e-03,  1.0000e+00], [-1.8997e-03, -9.6762e-04,  1.0000e+00]]
+        # 得先注释reset_base_yaw，才看得出来对错
+        # print(math_utils.quat_apply(self.feet_quat_w, self.axis_x_feet)[0])  # [[ 9.9996e-01, -7.5743e-03,  3.4786e-03], [ 9.9999e-01,  4.5964e-04, -6.5386e-05]]
 
         axis_y = torch.tensor([0, 1, 0], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
         # base body axis y point to world Y  # -------------------------------------------------------------------------------------------------------attention

@@ -454,6 +454,10 @@ class Zbot4LEnvV1(DirectRLEnv):
         self.joint_speed_limit = 1.0 * torch.ones((self.num_envs, 1), device=self.device)  # 固定为1.0，不再作为obs
 
         # Get specific body indices
+        print(self._robot.find_joints("joint.*"))
+        # ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], ['joint1', 'joint4', 'joint7', 'joint10', 'joint2', 'joint5', 'joint8', 'joint11', 'joint3', 'joint6', 'joint9', 'joint12'])
+        print(self._robot.find_bodies("foot.*"))  # ([21, 22, 23, 24], ['foot1', 'foot2', 'foot3', 'foot4']) 这次顺序倒还好，有些usd会乱，需要注意
+
         self._feet_ids, _ = self._contact_sensor.find_bodies("foot.*")
         self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies("base|a.*|b.*")
         self.base_body_idx = self._robot.find_bodies("base")[0]
@@ -541,9 +545,11 @@ class Zbot4LEnvV1(DirectRLEnv):
         self.base_quat_w = self._robot.data.body_link_quat_w[:, self.base_body_idx].squeeze(1)
         self.feet_quat_w = self._robot.data.body_link_quat_w[:, self.feet_body_idx]
         self.feet_pos_w = self._robot.data.body_link_pos_w[:, self.feet_body_idx]
-        # print(self.base_pos_w[:4, 2])  # tensor([0.2545, 0.2545, 0.2545, 0.2545], device='cuda:0')
-        # print(self.base_quat_w[:2])  # [ 0.6003, -0.6003, -0.3735, -0.3739]
-        # print(self.feet_pos_w[:2, :, 2])  # tensor([[0.0000e+00, 5.3035e-02],[1.8626e-09, 5.3035e-02]], device='cuda:0')
+        # print(self.base_pos_w[:4, 2])  # tensor([0.2120, 0.2120, 0.2120, 0.2120], device='cuda:0')
+        # print(self.base_quat_w[:2])  # [ 1, 0, 0, 0]
+        # print(self.feet_pos_w[:2, :, 2])  # [0.0530, 0.0530, 0.0530, 0.0530]
+        # 得先注释reset_base_yaw，才看得出来对错
+        # print(math_utils.quat_apply(self.feet_quat_w, self.axis_x_feet)[0])
 
         axis_y = torch.tensor([0, 1, 0], device=self.sim.device, dtype=torch.float32).repeat((self.num_envs, 1))
         # base body axis y point to world Y

@@ -184,9 +184,18 @@ def my_curriculum(env: Zbot6SEnvV4, env_ids: torch.Tensor):
     elif env.common_step_counter >= (env.max_episode_length * 144) and env.curriculum_stage == 2:  # in the 6000 episodes
     # elif env.common_step_counter >= (env.max_episode_length * 144) and env.curriculum_stage == 3:  # in the 6000 episodes
         env.reward_scales["feet_harmony"] = 1.0
-        env.reward_scales["feet_downward"] = -8.0
+        env.reward_scales["feet_downward"] = -10.0  # -8.0
 
-        env.reward_scales["step_length"] = 6.0
+        env.reward_scales["step_length"] = 7.0  # 6.0
+
+        env.reward_scales["track_heading_yaw"] = 2.0
+
+        reset_term = env.event_manager.get_term_cfg("reset_command_resample")
+        interval_term = env.event_manager.get_term_cfg("interval_command_resample")
+        reset_term.params["prob_pos"] = 0.6  # 0.7
+        interval_term.params["prob_pos"] = 0.6  # 0.7
+
+        env.reward_scales["feet_close"] = -110.0
         env.curriculum_stage += 1
 
 def range_curriculum(
@@ -540,11 +549,11 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
             # "step_length": 2.0,
 
             "feet_air_time_biped": 1.0,
-            "airtime_variance": -5.0,  #-1.0,
+            "airtime_variance": -5.0,  # -1.0,
             "feet_slide": -1.0,
             
             "feet_harmony": 0.0,
-            "feet_close": -10.0,
+            "feet_close": -10.0,  # -10.0,
         },
     }
 
@@ -565,7 +574,7 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # events.reset_command_resample.params["velocity_range"] = (0.4, 0.4)
     # events.interval_command_resample.params["velocity_range"] = (0.4, 0.4)
 
-    # per 1000 episodes adjust velocity range, set dual_sign=True in the 500 episodes
+    # per 1000 episodes adjust velocity range, set dual_sign=True in the 500 episodes 2026-01-09_18-06-50
     # events.reset_command_resample.params["dual_sign"] = False
     # events.interval_command_resample.params["dual_sign"] = False
     # events.reset_command_resample.params["velocity_range"] = (0.3, 0.3)
@@ -586,27 +595,29 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
 
     # new curriculum, adjust resample command func  # fine, but prob_pos how many? 0.8正》反，0.7反》正
     # events.vel_range = None 
-    # 1000 1，2500 0.8，later vel_range 正走又not good
+    # airv-1(default) 1000 1，2500 0.8，later vel_range 正走光抬腿 2026-01-10_23-19-41
 
-    # airtime_variance -10, 2000 1，3000 0.8，later vel_range
+    # airtime_variance -10, 2000 1，3000 0.8，later vel_range 2026-01-11_01-14-36 非常诡异的步态
     # airtime_variance -10 not good for 正走
 
-    # maybe 1 0.8 1 0.8?
+    # maybe 1 0.8 1 0.8? 2026-01-11_03-12-27
     # events.vel_range = None 
 
     # # test airv-10, feetf 0.0 1000, add feetf-1.0 2000 not good，应该是因为airv-10本身就不太好，后面checkpoint1000看了下
     # # test airv-10, feetf-0.5 no
-    # # test airv-5, feetf-0.5 1000it OK 右脚略大于左脚；2000it 右脚抬得更猛了 2026-01-12_00-05-49
     # # test airv-5, feetf-1.0 no
+    # # test airv-5, feetf-0.5 1000it OK 右脚略大于左脚；2000it 右脚抬得更猛了 2026-01-12_00-05-49
     # events.vel_range = None
     # events.my_curric = None
 
-    # # 1 2000, 0.7 ? 2026-01-12_02-10-02 my_curric不能正常触发!!!!![fix bug]
-    # # 1 1000, 0.5 2000
-    # # 1 1000, 0.8 2000
-    # # 1 airv-5 1000, 0.8 airv-10 2000 2026-01-12_18-18-06 
+    # # my_curric不能正常触发!!!!![fix bug]
+    # # 1 1000, 0.5 2000 2026-01-12_16-09-19
+    # # 1 1000, 0.8 2000 2026-01-12_16-58-09
+    # # 增大airv
+    # # 1 airv-5 1000, 0.8 airv-10 2000 2026-01-12_18-18-06 better
     # events.vel_range = None 
 
+    # 先只关注正方向，prob_pos=1 data/0112
     # # test airv-5, feetf-0.5 1000it，airv-10, feetf-0.5 2000it，没什么变化，还是右脚抬得更猛
     # # test airv-5, feetf-0.5 1000it，airv-10, feetf-1.0 2000it，没什么变化，还是右脚抬得更猛
     # # test airv-5, feetf-0.5 1000it，airv-20, feetf-1.0 2000it，没什么变化，还是右脚抬得更猛
@@ -616,14 +627,15 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, 0.8 2000it Ok 2026-01-13_00-59-49 > 2026-01-12_18-18-06 
     # events.vel_range = None 
 
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, 0.8 2000it，later vel_range 还是右脚抬得更猛
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, 0.8 2000it，later vel_range 还是右脚抬得更猛 2026-01-13_02-00-04
 
     # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 2000it 2026-01-13_14-23-17 > 2026-01-12_23-24-31
-    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it 2026-01-13_15-02-11
+    # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it，later vel_range 6000it OK 还是右脚抬得更猛 2026-01-13_15-37-46
     # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 2000it 也还行 2026-01-13_17-20-58
     # events.vel_range = None 
+    # # events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
 
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it，later vel_range 6000it OK 还是右脚抬得更猛
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it，later vel_range 6000it 要好些 2026-01-13_18-12-13 
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-3.0 0.8 2000it，later vel_range 8000it 2026-01-14_01-14-28
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 8000it 2026-01-14_03-03-33 > 2026-01-14_01-14-28 <<==========
@@ -636,13 +648,25 @@ class Zbot6SEnvV4Cfg(DirectRLEnvCfg):
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it/20000it feetha_3 1.0 feetd-8.0 6000it 2026-01-22_22-00-14 / 2026-01-23_15-20-39 good,就是反走步长较小，朝向能力一般
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 8.0 4000it feetha_3 1.0 feetd-8.0 6000it 2026-01-23_20-24-50 步子是大了，但感觉容易摔
     # feet_close 0.13 bad >7800it move; 0.12 worse not move; 0.115 ok
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it feetha_3 1.0 feetd-8.0 6000it OK 2026-01-25_16-24-24_feetc0115 <<==========
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it/20000it feetha_3 1.0 feetd-8.0 6000it OK 2026-01-25_16-24-24 / 2026-01-27_15-00-47 <<==========
     # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 7.0 feetha_3 1.0 feetd-8.0 6000it 步子大了些，但感觉容易摔
-    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 6.0 feetha_3 1.0 feetd-8.0 6000it
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 6.0 feetha_3 1.0 feetd-8.0 6000it 感觉差不多，没必要，tracking yaw还下降了
+    # 尝试 增加tracking yaw 和 prob_pos
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it feetha_3 1.0 feetd-8.0 0.7 yaw 2.0 6000it 感觉步子小，反走脚不平 2026-01-27_21-35-05
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 6.0 feetha_3 1.0 feetd-10.0 0.7 yaw 2.0 6000it 反走脚还是不平
+    # 调小自碰撞阈值
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 10000it stepl 6.0 feetha_3 1.0 feetd-10.0 0.6 yaw 2.0 6000it 感觉脚更平了 2026-01-28_20-26-12
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 20000it stepl 7.0 feetha_3 1.0 feetd-10.0 0.6 yaw 2.0 6000it 其它都不错，但是反走脚靠得很近 2026-01-29_15-23-02
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 20000it stepl 7.0 feetha_3 1.0 feetd-10.0 0.6 yaw 2.0 feetc-100 6000it 2026-01-29_20-54-23 OK
+    # 如果feet_close一开始就是-100.0，bad 正走无法启动，>10000it只学会了反走；一开始就是-50.0 bad；一开始就是-20.0 bad
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 20000it stepl 7.0 feetha_3 1.0 feetd-10.0 0.6 yaw 2.0 feetc-200 6000it tracking yaw下降，feetfoward也下降
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 20000it stepl 7.0 feetha_3 1.0 feetd-10.0 0.6 yaw 2.0 feetc-150 6000it tracking yaw下降，feetfoward也下降
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 20000it stepl 7.0 feetha_3 1.0 feetd-10.0 0.6 yaw 2.0 feetc-120 6000it 2026-02-01_01-51-36 OK <<==========
+    # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-5.0 0.8 2000it，later vel_range 20000it stepl 7.0 feetha_3 1.0 feetd-10.0 0.6 yaw 2.0 feetc-110 6000it tracking yaw下降，feetfoward也下降
     events.vel_range.params["limit_yaw_ranges"] = (-0.5, 0.5)
 
     # # 修改了下airtime_variance的计算方式，以及steplength no reward for zero command 
-    # # bad，对feetdownward的影响较大，改回去了
+    # # bad，对feetdownward的影响较大，改回去了，主要取消clip后airv的参数可能不能这么大
     # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-40, feetd-2.0 0.8 2000it 改了airv好像确实有点用
     # # test airv-5, feetf-0.5 500it，airv-10, feetf-1.0 feets-2.0 1000it, airv-20, feetd-2.0 0.8 2000it 没什么变化，对feetdownward的影响一样较大
     # events.vel_range = None
@@ -879,7 +903,8 @@ class Zbot6SEnvV4(DirectRLEnv):
                 torch.norm(self._contact_sensor.data.net_forces_w_history[:, :, self._undesired_contact_body_ids], dim=-1), 
                 dim=1, 
             )[0]
-            > 1.0,
+            > 0.5,
+            # > 1.0,
             dim=1,
         )
         died_1 = (self.base_pos_w[:, 2] < self.cfg.termination_height)

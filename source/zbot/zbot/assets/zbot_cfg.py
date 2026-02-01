@@ -1078,7 +1078,7 @@ ZBOT_8S_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.212),
+        pos=(0.0, 0.0, 0.318),
         rot=(1.0, 0.0, 0.0, 0.0),
         # rot = (0.707, 0.0, 0.707, 0.0),  # (w, x, y, z); y-axis -90; if y-axis 90, rot = (0.707, 0.0, 0.707, 0.0)
         joint_pos={
@@ -1094,7 +1094,9 @@ ZBOT_8S_CFG = ArticulationCfg(
         },
         joint_vel={
             "joint[1-4]": 0.0,
-            "joint[7-10]": 0.0,
+            "joint[7-9]": 0.0,  # 不能"joint[7-10]"
+            "joint10": 0.0,
+            # "joint.*": 0.0,  # 用这个可以
         },
     ),
     soft_joint_pos_limit_factor=1.0,

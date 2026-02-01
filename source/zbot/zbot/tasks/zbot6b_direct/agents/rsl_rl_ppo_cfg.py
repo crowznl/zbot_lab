@@ -205,8 +205,10 @@ class PPORunnerCfgV4(RslRlOnPolicyRunnerCfg):
 @configclass
 class Zbot6SEnvV4PPOCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1000
-    save_interval = 100
+    # max_iterations = 1000
+    # save_interval = 100
+    max_iterations = 2000
+    save_interval = 1000
     experiment_name = "zbot_6b_flat_direct_v4"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
