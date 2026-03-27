@@ -944,6 +944,14 @@ class Zbot4LEnvV1(DirectRLEnv):
         vel_arrow_scale = torch.tensor([self.cfg.arrow_scale[0], self.cfg.arrow_scale[1]*2, self.cfg.arrow_scale[2]*2], 
                                        device=self.device).repeat(self.num_envs, 1)
         vel_arrow_scale[:, 0] *= self.base_lin_vel_forward_w * 5.0
+
+        # # 固定箭头长度，只表示方向
+        # vel_des_arrow_scale = torch.tensor(self.cfg.arrow_scale, device=self.device).repeat(self.num_envs, 1)
+        # # vel_des_arrow_scale[:, 0] *= self.commands[:, 0] * 5.0 * 1.5  # 乘以1.5是为了让绿色指令的箭头更明显一些
+        # vel_des_arrow_scale[:, 0] *= 1.5
+        # vel_arrow_scale = torch.tensor(self.cfg.arrow_scale, device=self.device).repeat(self.num_envs, 1)
+        # vel_arrow_scale[:, 0] *= 1.5
+
         zeros = torch.zeros_like(self.target_heading_yaw)
         vel_des_arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, self.target_heading_yaw)
         vel_arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, self.current_yaw)

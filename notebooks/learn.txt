@@ -1,0 +1,131 @@
+
+# ImportError: undefined symbol: iJIT_NotifyEvent
+# https://blog.csdn.net/mr_hore/article/details/138961434
+
+conda install mkl=2024.0
+
+
+# https://forums.developer.nvidia.com/t/rtx-4090-is-not-woking-with-isaacgymenvs-and-nvrtc-error-invalid-value-for-gpu-architecture-arch/271323/9
+
+conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.7 -c pytorch -c nvidia
+
+
+# Make sure that your the parameters in the training yaml config file (under isaacgymenvs/cfg/train) satisfies the assertion requirement of self.batch_size % self.minibatch_size == 0. batch_size is computed as horizon_length * num_envs. 
+# num_minibatches = horizon_length * num_actors(envs) / minibatch_size
+
+
+
+# 在 Isaac Lab 中， substeps (cfg/tasks/ZBot.yaml) 的使用已被模拟 dt 和 decimation 参数的组合取代。
+# 例如，在 IsaacGymEnvs 中，具有 dt=1/60 和 substeps=2 等效于在 Isaac Lab 中
+# 使用 dt=1/120 decimation=2 进行 2 次模拟步骤，但在 1/60 秒运行任务步骤。
+"""
+    dt: float = 1.0 / 60.0  The physics simulation time-step (in seconds). Default is 0.0167 seconds.
+    decimation: int = 2  The number of simulation steps to skip between two consecutive observations.
+                        Number of control action updates @ sim dt per policy dt.For instance, if the 
+                        simulation dt is 0.01s and the policy dt is 0.1s, then the decimation is 10. 
+                        This means that the control action is updated every 10 simulation steps.
+    
+    episode_length_s: float = 32.0  The duration of the episode in seconds.
+    
+    Based on the decimation rate and physics time step, the episode length is calculated as:
+        episode_length_steps = ceil(episode_length_s / (dt * decimation))
+"""
+@property
+def max_episode_length(self):
+	"""The maximum episode length in steps adjusted from s."""
+	return math.ceil(self.cfg.episode_length_s / (self.cfg.sim.dt * self.cfg.decimation))
+
+python train.py task=ZBot num_envs=4096
+
+python train.py task=ZBot checkpoint=runs/ZBot_14-21-36-21/nn/ZBot.pth test=True num_envs=64
+
+cd run
+tensorboard --logdir=./
+python -m tensorboard.main --logdir ./xxx
+
+# isaaclab extension
+
+python scripts/rsl_rl/train.py --task=zbot-8b-walking-v0 --num_envs 64
+
+python scripts/rsl_rl/play.py --task=zbot-6b-standup-v0 --num_envs 64
+python scripts/rsl_rl/train.py --task=zbot-6b-standup-v0 --num_envs 4096 --headless --max_iterations 1000
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v4 --num_envs 4096 --headless --max_iterations 2000
+python scripts/rsl_rl/play.py --task=zbot-6b-walking-v4 --num_envs 64
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v5 --num_envs 4096 --headless --max_iterations 5000 --resume --load_run=2026-01-08_17-51-19steplength2
+
+python scripts/rsl_rl/train.py --task=zbot-quad-walking-v1 --num_envs 4096 --headless --max_iterations 2000 --resume --load_run=
+python scripts/rsl_rl/play.py --task=zbot-quad-walking-v1 --num_envs 64
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-m-v0 --num_envs 4096 --headless --max_iterations 2000
+python scripts/rsl_rl/play.py --task=zbot-6b-walking-m-play-v0 --num_envs 64
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-m-v0 --num_envs 4096 --headless --max_iterations 1000 --resume --load_run=2025-11-20_16-51-29
+
+python scripts/rsl_rl/train.py --task=zbot-6s-snake-v0 --num_envs 4096 --headless --max_iterations 2000
+python scripts/rsl_rl/play.py --task=zbot-6s-snake-v0 --num_envs 64
+
+python scripts/rsl_rl/train.py --task=zbot-12b-walking-v0 --num_envs 4096 --headless --max_iterations 1000 --resume --load_run=2025-11-09_19-00-40
+python scripts/rsl_rl/play.py --task=zbot-12b-walking-v0 --num_envs 64
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v3 --num_envs 4096 --headless --max_iterations 2000 --resume --load_run=2025-11-07_18-25-14
+python scripts/rsl_rl/play.py --task=zbot-6b-walking-v3 --num_envs 64
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2-1-1 --num_envs 4096 --headless --max_iterations 8000
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2-1 --num_envs 4096 --headless --max_iterations 2000 --resume --load_run=2025-12-13_18-07-40
+python scripts/rsl_rl/play.py --task=zbot-6b-walking-v2-1 --num_envs 64
+
+python scripts/rsl_rl/train.py --task=zbot-6b-laying-v1 --num_envs 4096 --headless --max_iterations 2000
+python scripts/rsl_rl/play.py --task=zbot-6b-laying-v1 --num_envs 64 --load_run=2025-12-08_15-20-23
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v2 --num_envs 4096 --headless --max_iterations 2000 --resume --load_run=2025-11-04_13-15-04
+python scripts/rsl_rl/play.py --task=zbot-6b-walking-v2 --num_envs 64 --video --video_length 600
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v1 --num_envs 4096 --headless --max_iterations 1000 --resume --load_run=2025-11-01_12-29-29
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v1 --num_envs 4096 --headless --max_iterations 1000 --resume --load_run=2025-11-03_17-21-08
+python scripts/rsl_rl/play.py --task=zbot-6b-walking-v1 --num_envs 64 --load_run=2025-11-02_17-11-14
+
+python scripts/rsl_rl/train.py --task=zbot-3s-direct-v0 --num_envs 4096 --headless --max_iterations 5000
+python scripts/rsl_rl/play.py --task=zbot-3s-direct-v0 --num_envs 64
+
+python scripts/rsl_rl/train.py --task=zbot-6b-walking-v0 --num_envs 4096 --headless --max_iterations 1000
+python scripts/rsl_rl/train.py --task=zbot-6s-direct-v0 --num_envs 4096 --headless --max_iterations 1000
+python scripts/rsl_rl/play.py --task=zbot-6s-direct-v0 --num_envs 64
+
+
+python scripts/rsl_rl/play.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs=64 --load_run=2024-11-24_19-04-17
+python scripts/rsl_rl/play.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs=64 --load_run=2024-11-24_20-45-53
+python scripts/rsl_rl/play.py --task=Zbot-6w-skating-v0 --num_envs=64 --load_run=2024-11-27_15-31-40
+python scripts/rsl_rl/play.py --task=Zbot-6w-skating-v0 --num_envs=320 --load_run=2024-12-06_15-08-09
+python scripts/rsl_rl/play.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs=64 --load_run=2024-10-19_13-40-01
+
+python scripts/rsl_rl/train.py --task=Zbot-2s-walk-v0 --num_envs 4096 --headless --max_iterations 1000
+python scripts/rsl_rl/play.py --task=Zbot-2s-walk-v0 --num_envs 64 --video --video_length 500
+
+python scripts/rsl_rl/play.py --task=Zbot-6b-walking-v0 --num_envs=64 --video --video_length 500
+python scripts/rsl_rl/train.py --task=Zbot-8s-standup-v0 --num_envs 4096 --headless --max_iterations 2000
+python scripts/rsl_rl/train.py --task=Zbot-6w-skating-v0 --num_envs 4096 --headless --max_iterations 2000
+python scripts/rsl_rl/train.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs 4096 --headless --max_iterations 2000
+python scripts/rsl_rl/train.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs 4096 --headless --video --video_length 500 --video_interval 1500
+python scripts/rsl_rl/play.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs=64
+python scripts/rsl_rl/play.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs=64 --video --video_length 500 # play not use video_interval
+python scripts/rsl_rl/play.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs=64 --load_run=2024-10-19_13-27-16
+python scripts/rsl_rl/play.py --task=Isaac-Velocity-Flat-Zbot-6s-Direct-v0 --num_envs=64 --checkpoint=model_50.pt
+
+--resume "Whether to resume from a checkpoint." for train
+
+--load_run -> 
+load_run: str = ".*"
+"""The run directory to load. Default is ".*" (all).
+   If regex expression, the latest (alphabetical order) matching run will be loaded.
+"""
+--checkpoint ->
+load_checkpoint: str = "model_.*.pt"
+"""The checkpoint file to load. Default is ``"model_.*.pt"`` (all).
+   If regex expression, the latest (alphabetical order) matching file will be loaded.
+"""
+agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+
+# isaaclab1
+python source/standalone/workflows/rsl_rl/train.py --task=Isaac-Velocity-Flat-Anymal-C-Direct-v0

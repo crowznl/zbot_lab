@@ -31,6 +31,11 @@
 # 我一直认为step不管怎样都会调用self._reset_idx。刚刚看了源码，原来它有len(reset_env_ids) > 0的判断。
 # 这就是为什么用 == 几乎肯定会漏掉触发时机（除非那帧恰好有环境重置）。
 
+# 2026-03-16
+# 课程学习里大量使用了(env.max_episode_length*24)代表1000episodes，
+# 实际上只是max_episode_length=20.0s * 50Hz恰巧=1000， 
+# 理论上应该用num_episodes(iters) * num_steps_per_env
+
 from __future__ import annotations
 
 import gymnasium as gym
@@ -1272,6 +1277,14 @@ class Zbot6SEnvV4(DirectRLEnv):
         vel_arrow_scale = torch.tensor([self.cfg.arrow_scale[0], self.cfg.arrow_scale[1]*2, self.cfg.arrow_scale[2]*2], 
                                        device=self.device).repeat(self.num_envs, 1)
         vel_arrow_scale[:, 0] *= self.base_lin_vel_forward_w * 5.0
+
+        # # 固定箭头长度，只表示方向
+        # vel_des_arrow_scale = torch.tensor(self.cfg.arrow_scale, device=self.device).repeat(self.num_envs, 1)
+        # # vel_des_arrow_scale[:, 0] *= self.commands[:, 0] * 5.0 * 1.5  # 乘以1.5是为了让绿色指令的箭头更明显一些
+        # vel_des_arrow_scale[:, 0] *= 1.5
+        # vel_arrow_scale = torch.tensor(self.cfg.arrow_scale, device=self.device).repeat(self.num_envs, 1)
+        # vel_arrow_scale[:, 0] *= 1.5
+
         zeros = torch.zeros_like(self.target_heading_yaw)
         vel_des_arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, self.target_heading_yaw)
         vel_arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, self.current_yaw)
