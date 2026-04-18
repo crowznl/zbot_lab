@@ -55,6 +55,8 @@ class ZbotKeyboardController:
         env_cfg.events.vel_range = None
         env_cfg.events.reset_command_resample = None
         env_cfg.events.interval_command_resample = None
+
+        # env_cfg.events.reset_base = None  #如果取消随机，得恢复_reset_idx()中的Reset robot state
         
         # 3. 创建环境
         self.env = Zbot4LEnvV1(cfg=env_cfg, render_mode="rgb_array")

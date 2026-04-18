@@ -690,6 +690,12 @@ class Zbot6SUpEnv(DirectRLEnv):
         self._previous_actions[env_ids] = 0.0
         self.p_delta[env_ids] = 0.0
 
+        # # Reset robot state
+        # default_root_state = self._robot.data.default_root_state[env_ids]
+        # default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+        # self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
+        # self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
+
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)

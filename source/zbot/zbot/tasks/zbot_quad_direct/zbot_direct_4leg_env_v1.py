@@ -71,6 +71,9 @@ from isaaclab.utils import configclass
 
 from zbot.assets import ZBOT_4L_CFG
 
+import csv
+import os
+
 def reset_root_state_uniform(
     env: Zbot4LEnvV1,
     env_ids: torch.Tensor,
@@ -325,8 +328,8 @@ class Zbot4LEnvV1Cfg(DirectRLEnvCfg):
     )
 
     # commands makers
-    debug_vis=False  # train
-    # debug_vis=True  # play
+    # debug_vis=False  # train
+    debug_vis=True  # play
 
     goal_vel_visualizer_cfg: VisualizationMarkersCfg = GREEN_ARROW_X_MARKER_CFG.replace(
         prim_path="/Visuals/Command/heading_velocity_goal"
@@ -518,6 +521,8 @@ class Zbot4LEnvV1(DirectRLEnv):
         )
         self.p_delta = torch.clip(self.p_delta, -1.0 * torch.pi, 1.0 * torch.pi)
         self._processed_actions = self.p_delta + self._robot.data.default_joint_pos
+        # print("目标关节位置:", self._processed_actions)
+        # self.save_tensor_to_csv(self._processed_actions, env_id=0, csv_file_path="logs/csv/4L/processed_actions_env0.csv")
 
         # # mode 2
         # self.num_dof = 6
@@ -612,6 +617,9 @@ class Zbot4LEnvV1(DirectRLEnv):
             ],
             dim=-1,
         )
+        # print("当前关节位置:", self._robot.data.joint_pos)
+        # print("初始关节位置:", self._robot.data.default_joint_pos)
+        # self.save_tensor_to_csv(obs, env_id=0,csv_file_path="logs/csv/4L/obs_env0.csv")
         # print(obs.shape)
         observations = {"policy": obs}
         return observations
@@ -981,4 +989,39 @@ class Zbot4LEnvV1(DirectRLEnv):
     #     arrow_quat = math_utils.quat_mul(base_quat_w, arrow_quat)
 
     #     return arrow_scale, arrow_quat
+    def save_tensor_to_csv(self, var: torch.Tensor, env_id: int = 0, csv_file_path: str = "xxx_env0.csv"):
+        """
+        将第一个环境的 self._processed_actions 保存到 CSV 文件中。
+        
+        CSV 格式：
+        - 第一列：当前时间 (self.episode_length_buf * self.step_dt)
+        - 第二至七列：各关节的 action 值 (self._processed_actions[0, :6])
+        """
+        
+        # 创建目录（如果不存在）
+        os.makedirs(os.path.dirname(csv_file_path), exist_ok=True)
+        
+        # 检查文件是否存在以决定是否需要写入表头
+        file_exists = os.path.isfile(csv_file_path)
+        
+        with open(csv_file_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            
+            # 如果是新文件，则写入表头
+            if not file_exists:
+                header = ['time'] + [f'tensor_{i}' for i in range((var.shape[1]))]
+                writer.writerow(header)
+            
+            # 获取第一个环境的时间和动作数据
+            # print(self.episode_length_buf[0])  # tensor(791, device='cuda:0')
+            # print(self.step_dt)  # 0.02
+            current_time = round((self.episode_length_buf[0] * self.step_dt).item(), 2)  # 浮点数运算的精度问题
+            # tensor_values = getattr(self, tensor_name)[0, :6].cpu().numpy()
+            # row = [current_time] + list(tensor_values)
+            # 写入数据行
+
+            row = [current_time] + var[env_id].cpu().tolist()
+            writer.writerow(row)
+
+
 
