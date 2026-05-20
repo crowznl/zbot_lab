@@ -136,7 +136,7 @@ class EventCfg:
 
 @configclass
 class Zbot6SnakeEnvV1Cfg(DirectRLEnvCfg):
-    episode_length_s = 10.0
+    episode_length_s = 20.0
     decimation = 4
     action_space = 6
     observation_space = 27
@@ -152,10 +152,12 @@ class Zbot6SnakeEnvV1Cfg(DirectRLEnvCfg):
     rhythm_turn_gain = 0.30
 
     # limit integrated joint excursion to suppress body over-twisting
-    joint_delta_limit = 1.8849556  # 0.6 * pi
+    # joint_delta_limit = 1.8849556  # 0.6 * pi
+    joint_delta_limit = torch.pi
+    termination_height = 0.06
 
     # heading smoothing for robust yaw estimation
-    heading_ema_alpha = 0.30
+    heading_ema_alpha = 0.50
 
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 200.0,
@@ -236,20 +238,68 @@ class Zbot6SnakeEnvV1Cfg(DirectRLEnvCfg):
     )
 
     reward_cfg = {
-        "reward_scales": {
-            # task rewards (no explicit speed tracking)
-            "alive": 0.1,
-            "motion_progress": 6.0,
-            "turn_rate": 3.0,
+        # "reward_scales": {
+        #     # task rewards (no explicit speed tracking)
+        #     # "alive": 0.1,
+        #     # "motion_progress": 2.0,
+        #     # "motion_progress": 10.0,
+        #     # "motion_progress": 5.0,
+        #     # "motion_progress": 4.0,
+        #     # "motion_progress": 4.5,  # 2026-04-19_20-39-08m4.5
+        #     # "motion_progress": 3.0,
+        #     # "motion_progress": 4.0,  # 2026-04-20_14-41-31
+        #     # "motion_progress": 4.0,  # l20s, die-20, new motion progress  # 不太好，持续的位置累计
+        #     # "motion_progress": 5.0,  # l20s, die-20, new lateral_drift  #2026-04-20_18-57-27
+        #     "motion_progress": 6.0,  # 2026-04-28_17-16-17 还行像弹簧一样
+        #     # "turn_rate": 3.0,
 
-            # straightness / anti-drift
-            "straight_heading": -1.5,
-            "lateral_drift": -2.0,
-            "yaw_drift": -0.6,
+        #     # straightness / anti-drift
+        #     "straight_heading": -1.0,
+        #     # "lateral_drift": -3.0,
+        #     "lateral_drift": -4.0,
+        #     "yaw_drift": -0.5,
+
+        #     # rhythm prior
+        #     "rhythm_tracking": 1.0,
+        #     # "shape_smooth": -0.25,
+
+        #     # regularization
+        #     "action_rate": -0.05,
+        #     "torques": -2e-4,
+        #     "joint_vel": -2e-4,
+        #     "joint_acc": -1e-7,
+        # }
+        # "reward_scales": {
+        #     "motion_progress": 6.0,  
+
+        #     "straight_heading": -1.5,
+        #     "lateral_drift": -5.0,
+        #     "yaw_drift": -0.5,
+
+        #     # rhythm prior
+        #     "rhythm_tracking": 1.0,
+        #     # "shape_symmetry": -0.5,
+        #     # "shape_symmetry": -0.2,
+        #     "shape_symmetry": -0.1,
+
+        #     # regularization
+        #     "action_rate": -0.05,
+        #     "torques": -2e-4,
+        #     "joint_vel": -2e-4,
+        #     "joint_acc": -1e-7,
+        # }
+        "reward_scales": {
+            "motion_progress": 6.0,  
+
+            # "straight_heading": -3.0,
+            # "straight_heading": -2.0,
+            "straight_heading": -2.5,
+            "lateral_drift": -5.0,
+            "yaw_drift": -0.5,
 
             # rhythm prior
             "rhythm_tracking": 1.0,
-            "shape_smooth": -0.25,
+            "shape_symmetry": -0.1,
 
             # regularization
             "action_rate": -0.05,
@@ -303,8 +353,13 @@ class Zbot6SnakeEnvV1(DirectRLEnv):
         joint_ids = torch.arange(self.num_dof, device=self.device, dtype=torch.float32)
         self.joint_ids = joint_ids.unsqueeze(0)
         self.joint_phase_offsets = self.joint_ids * self.cfg.rhythm_joint_phase_coef
-        # turning bias: keep simple linear profile
-        self.turn_profile = torch.linspace(-1.0, 1.0, self.num_dof, device=self.device).unsqueeze(0)
+        # turning bias: match this robot's joint convention
+        # left arc corresponds to pattern [-,+,-,+,-,+]
+        self.turn_profile = torch.where(
+            (joint_ids.long() % 2) == 0,
+            -torch.ones_like(joint_ids),
+            torch.ones_like(joint_ids),
+        ).unsqueeze(0)
         self.cpg_ref = torch.zeros((self.num_envs, self.num_dof), device=self.device)
         self.cpg_ref_processed = self._robot.data.default_joint_pos.clone()
 
@@ -384,7 +439,7 @@ class Zbot6SnakeEnvV1(DirectRLEnv):
         move_cmd = self.commands[:, 0:1]
         turn_cmd = self.commands[:, 1:2]
         self.cpg_ref = (
-            self.cfg.rhythm_base_amplitude * self.cfg.rhythm_move_gain * move_cmd * wave
+            self.cfg.rhythm_move_gain * move_cmd * self.cfg.rhythm_base_amplitude * wave
             + self.cfg.rhythm_turn_gain * turn_cmd * self.turn_profile
         )
         # self.cpg_ref = torch.clamp(self.cpg_ref, -1.0, 1.0)
@@ -422,7 +477,7 @@ class Zbot6SnakeEnvV1(DirectRLEnv):
             self._episode_sums[name] += rew
 
         terminated_ids = self.reset_terminated.nonzero(as_tuple=False).squeeze(-1)
-        reward[terminated_ids] -= 2.0
+        reward[terminated_ids] -= 20.0
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -433,8 +488,9 @@ class Zbot6SnakeEnvV1(DirectRLEnv):
         # safety termination
         # died = ~torch.isfinite(self.base_pos_w).all(dim=-1)
 
+        died = self.base_pos_w[:, 2] > self.cfg.termination_height
         drift_y = torch.abs(self.base_pos_w[:, 1] - self._terrain.env_origins[:, 1])
-        died = drift_y > 1.0
+        died |= drift_y > 0.3
 
         # self-collision (参考 snake_v0)
         filter_contact_forces = torch.cat(
@@ -511,8 +567,9 @@ class Zbot6SnakeEnvV1(DirectRLEnv):
         # encourage commanded forward/back motion without explicit speed target tracking
         cmd = self.commands[:, 0]
         active = (cmd.abs() > 0.5).float()
+        # length = cmd * (self.base_pos_w[:, 0] - self._terrain.env_origins[:, 0] + 0.318)
         return torch.tanh(4.0 * cmd * self.base_lin_vel_forward_w) * active
-
+        # return (2.0 * cmd * self.base_lin_vel_forward_w + length) * active
     def _reward_turn_rate(self):
         # encourage commanded turning direction
         cmd = self.commands[:, 1]
@@ -526,7 +583,10 @@ class Zbot6SnakeEnvV1(DirectRLEnv):
 
     def _reward_lateral_drift(self):
         move_active = (self.commands[:, 0].abs() > 0.5).float()
-        return torch.square(self.base_lin_vel_lateral_w) * move_active
+        lateral_length = torch.square(self.base_pos_w[:, 1] - self._terrain.env_origins[:, 1])
+        # return torch.square(self.base_lin_vel_lateral_w) * move_active
+        return lateral_length * move_active * 0.25 + torch.square(self.base_lin_vel_lateral_w) * move_active * 0.75
+    
 
     def _reward_yaw_drift(self):
         # during straight move, suppress unnecessary yaw spin
@@ -538,6 +598,15 @@ class Zbot6SnakeEnvV1(DirectRLEnv):
         # err = torch.mean(torch.square(self._actions - self.cpg_ref), dim=1)
         err = torch.mean(torch.square(self._processed_actions - self.cpg_ref_processed), dim=1)
         return torch.exp(-err / 0.5)
+    
+    def _reward_shape_symmetry(self):
+        jp = self.p_delta
+        symmetry_err = (
+            torch.abs(jp[:, 0] - jp[:, 5])
+            + torch.abs(jp[:, 1] - jp[:, 4])
+            + torch.abs(jp[:, 2] - jp[:, 3])
+        )
+        return symmetry_err
 
     def _reward_shape_smooth(self):
         # discourage adjacent-joint abrupt bending to reduce body contortion

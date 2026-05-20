@@ -67,7 +67,7 @@ python scripts/rsl_rl/train.py --task=zbot-6s-snake-v0 --num_envs 4096 --headles
 python scripts/rsl_rl/play.py --task=zbot-6s-snake-v0 --num_envs 64
 
 python scripts/rsl_rl/train.py --task=zbot-6s-snake-v1 --num_envs 4096 --headless --max_iterations 2000
-python scripts/rsl_rl/play.py --task=zbot-6s-snake-v1 --num_envs 64
+python scripts/rsl_rl/play.py --task=zbot-6s-snake-v1 --num_envs 64 --load_run=2026-04-19_20-39-08m4.5
 
 python scripts/rsl_rl/train.py --task=zbot-12b-walking-v0 --num_envs 4096 --headless --max_iterations 1000 --resume --load_run=2025-11-09_19-00-40
 python scripts/rsl_rl/play.py --task=zbot-12b-walking-v0 --num_envs 64

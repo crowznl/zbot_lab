@@ -38,7 +38,7 @@ class ZbotSFlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class PPORunnerCfgV1(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
     max_iterations = 1000
-    save_interval = 100
+    save_interval = 1000
     experiment_name = "zbot_6s_flat_snake_v1"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
